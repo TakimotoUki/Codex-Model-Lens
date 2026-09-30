@@ -79,12 +79,25 @@ public struct TurnRecord: Codable, Identifiable, Sendable, Equatable {
 
     public var serverEvidence: [ModelEvidence] { evidence.filter { $0.kind.isServerClaim } }
     public var safetyEvidence: [ModelEvidence] { evidence.filter { $0.kind == .safetyBuffering } }
-    public var reportedModel: String? { serverEvidence.sorted { $0.timestamp == $1.timestamp ? $0.id < $1.id : $0.timestamp < $1.timestamp }.last?.model }
+    public var effectiveServerEvidence: [ModelEvidence] {
+        let claims = serverEvidence
+        var headerResponseIDs = Set(claims.filter { $0.kind == .responseHeader }.compactMap(\.responseID))
+        // Metadata can precede the ID. Its header takes precedence over the next
+        // response model in that same source, never every subsequent response in a turn.
+        for header in claims where header.kind == .responseHeader && header.responseID == nil {
+            if let next = claims.filter({ $0.kind == .responseModel && $0.source == header.source && $0.timestamp >= header.timestamp })
+                .sorted(by: { $0.timestamp == $1.timestamp ? $0.id < $1.id : $0.timestamp < $1.timestamp }).first?.responseID {
+                headerResponseIDs.insert(next)
+            }
+        }
+        return claims.filter { $0.kind != .responseModel || $0.responseID.map { !headerResponseIDs.contains($0) } ?? true }
+    }
+    public var reportedModel: String? { effectiveServerEvidence.sorted { $0.timestamp == $1.timestamp ? $0.id < $1.id : $0.timestamp < $1.timestamp }.last?.model }
     public var recordedModel: String? {
         requestedModel ?? evidence.last(where: { $0.kind == .turnContext || $0.kind == .runtimeTrace })?.model
     }
     public var hasModelDifference: Bool {
-        evidence.contains { e in
+        effectiveServerEvidence.contains { e in
             guard e.kind.isServerClaim else { return false }
             if let from = e.fromModel { return from != e.model }
             return requestedModel.map { $0 != e.model } ?? false
