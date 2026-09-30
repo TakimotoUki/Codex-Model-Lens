@@ -1,0 +1,13 @@
+.build/
+.swiftpm/
+Data/
+Distribution/
+Documentation/UI/
+Documentation/*.png
+Documentation/Research/
+Documentation/*.json
+Documentation/*.csv
+Documentation/*.log
+Documentation/*sample*.txt
+.DS_Store
+*.dSYM/

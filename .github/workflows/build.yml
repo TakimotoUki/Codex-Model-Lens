@@ -1,0 +1,24 @@
+name: Build and test
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  macOS:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check architecture and tools
+        run: uname -m && swift --version && xcrun --show-sdk-version
+      - name: Offline tests
+        run: ./Scripts/test.sh
+      - name: Build arm64 app
+        run: ./Scripts/build_release.sh
+      - name: Upload app archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Codex-Model-Lens-arm64
+          path: Distribution/Codex-Model-Lens-1.3.0-arm64.zip

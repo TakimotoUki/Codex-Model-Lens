@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Codex Model Lens：原生 macOS 菜单栏应用，查看任务模型证据、Agent 用量与费用，并管理专注时间。Swift、Liquid Glass、Apple Silicon。">
+<meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f5f8ff">
+<title>Codex Model Lens — 在菜单栏，看清工作与专注</title>
+<link rel="icon" href="assets/lens.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="nav"><a href="#" class="brand"><img src="assets/lens.svg" alt="" width="28" height="28">Model Lens</a><div><a href="#features">功能</a><a href="#evidence">模型证据</a><a href="https://github.com/TakimotoUki/Codex-Model-Lens" class="github">GitHub ↗</a></div></nav>
+<main>
+<section class="hero">
+<div class="hero-copy"><span class="eyebrow">原生 macOS · Apple Silicon</span><h1>看清工作。<br><span>留住专注。</span></h1><p class="intro">任务模型证据、Agent 用量与番茄钟。<br>安静待在菜单栏，需要时一目了然。</p><div class="actions"><a class="button primary" href="https://github.com/TakimotoUki/Codex-Model-Lens/releases/latest">下载 Mac 版 <span>↓</span></a><a class="button secondary" href="https://github.com/TakimotoUki/Codex-Model-Lens">查看源码 ↗</a></div><p class="meta">macOS 26+ · arm64 · Swift · 免费开源</p><p class="install-note">当前 Release 为 ad-hoc 签名。首次打开可能需要在系统安全设置中确认。</p></div>
+<div class="hero-product"><div class="menu-caption"><span class="dot"></span>轻巧的菜单栏工作伙伴</div><div class="screen-wrap"><img id="product-screen" src="assets/menu-timer.png" width="780" height="520" alt="独立的紧凑番茄钟菜单，演示画面"></div><div class="preview-switch" role="group" aria-label="切换界面预览"><button class="selected" data-preview="timer" aria-pressed="true">番茄钟</button><button data-preview="usage" aria-pressed="false">用量</button></div><span class="demo-note">界面使用演示数据，非真实账户。</span></div>
+</section>
+<section id="features" class="features"><div class="section-heading"><span class="eyebrow">少一些打扰</span><h2>重要的事，放在一起。</h2><p>默认没有 Dock 图标和主窗口。原生控件，系统蓝色，内容决定界面大小。</p></div><div class="cards"><article><span class="feature-icon">◉</span><h3>用量与账户</h3><p>Codex、Antigravity、OpenCode Go、DeepSeek 与 WorkBuddy。按需启用，账户隔离，保留读取时间与来源。</p></article><article><span class="feature-icon">◷</span><h3>独立番茄钟</h3><p>自定义专注与休息，秒级倒计时，暂停恢复。计时与用量互不干扰，休眠后按真实截止时间修正。</p></article><article><span class="feature-icon">↗</span><h3>Cost 与历史</h3><p>区分已记录费用、余额、积分和价格估算。用量仪表盘保留快照，模型证据可本地保存与导出。</p></article></div></section>
+<section id="evidence" class="evidence"><div><span class="eyebrow">有来源，才有判断</span><h2>请求模型，与<br>服务端报告分开看。</h2><p>明确路由、原始响应模型与模型响应头能够提供可观察证据。记录来源与响应 ID，独立核验区分预热和实际输出。</p><p class="boundary">没有模型字段就保持未确认。安全缓冲候选不是交付模型；本机证据不能证明服务端权重，独立测试也不能代表已有任务。</p><a class="text-link" href="https://github.com/TakimotoUki/Codex-Model-Lens#模型检测为什么有时未确认">了解检测边界 →</a></div><div class="evidence-card"><div class="card-label">演示 · 模型证据</div><div class="model-row"><span>轮次请求模型</span><strong>demo-request-model</strong></div><div class="rule"></div><div class="model-row"><span>服务端报告模型</span><strong class="blue">demo-server-model</strong></div><div class="source-tag">响应模型字段 · resp_demo</div></div></section>
+<section class="provider-section"><span class="eyebrow">尊重数据的边界</span><h2>每个平台，都说明白。</h2><div class="provider-list"><span>Codex</span><span>Antigravity</span><span>OpenCode Go</span><span>DeepSeek</span><span>WorkBuddy</span></div><p>支持字段因平台和版本而异。Antigravity 当前本机接口未提供 Token 总数；DeepSeek Key 提供余额；WorkBuddy 新版加密登录仅提供本机已记录积分消耗后备。缺失信息不推算、不填零。</p><a class="text-link" href="https://github.com/TakimotoUki/Codex-Model-Lens#各平台支持范围">查看完整支持表 →</a></section>
+<section class="download"><img src="assets/lens.svg" width="64" height="64" alt="Model Lens 图标"><h2>从下一次专注开始。</h2><p>原生、轻量、透明。让菜单栏多一个实用的小工具。</p><a class="button primary" href="https://github.com/TakimotoUki/Codex-Model-Lens/releases/latest">下载 Codex Model Lens ↓</a></section>
+</main>
+<footer><span>© 2026 TakimotoUki · 与 Codex AI 协作开发 · MIT</span><div><a href="https://github.com/TakimotoUki/Codex-Model-Lens/blob/main/SECURITY.md">隐私与安全</a><a href="https://github.com/TakimotoUki/Codex-Model-Lens/blob/main/AUTHORS.md">贡献者</a><a href="https://github.com/steipete/CodexBar">感谢 CodexBar ↗</a></div></footer>
+<script src="site.js" defer></script>
+</body></html>
