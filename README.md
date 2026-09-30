@@ -6,6 +6,14 @@ Swift · SwiftUI / AppKit · macOS 26+ · Apple Silicon · MIT
 
 [下载 Release](https://github.com/TakimotoUki/Codex-Model-Lens/releases/latest) · [介绍网站](https://takimotouki.github.io/Codex-Model-Lens/) · [安全与隐私](SECURITY.md) · [贡献者](AUTHORS.md)
 
+**Contributors**
+
+| TakimotoUki | Codex AI（OpenAI） |
+| --- | --- |
+| [项目作者与产品设计](https://github.com/TakimotoUki) | [实现、测试、审核与文档协作](https://openai.com/codex/) |
+
+AI 协作通过 `AUTHORS.md` 与提交的 `Co-authored-by: Codex <codex@openai.com>` 明确署名；GitHub 侧栏头像列表由账户映射自动生成，不关联同名的人类账号。
+
 > **模型识别的边界：** 软件能读取服务端明确报告的模型字段和路由事件，并检测其与请求模型的差异。它不能证明服务端运行的模型权重，也无法从未保存、未公开的字段恢复任意现有任务的真实模型。没有有效证据时显示“模型未确认”。独立核验只说明该次核验请求。
 
 <p align="center"><img src="docs/assets/menu-usage.png" width="360" alt="用量与任务模型菜单，明确标注为演示数据"> <img src="docs/assets/menu-timer.png" width="360" alt="独立的紧凑番茄钟菜单"></p>
