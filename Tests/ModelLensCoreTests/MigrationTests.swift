@@ -69,4 +69,16 @@ struct MigrationTests {
         #expect(result.threads.first?.latestTurn?.hasModelDifference == true)
         #expect(LegacyStorageMigration.migrate(from: old, to: current).changedFiles.isEmpty)
     }
+
+    @Test func completedMigrationDoesNotReadProtectedLegacyFilesAgain() throws {
+        let (root, old, current) = try directories(); defer { try? FileManager.default.removeItem(at: root) }
+        try PrivateMetadata.save([probe()], to: old.appendingPathComponent("model-probes.json"))
+        #expect(LegacyStorageMigration.migrate(from: old, to: current).issues.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: current.appendingPathComponent("legacy-migration.json").path))
+        try Data("unreadable legacy format".utf8).write(to: old.appendingPathComponent("model-probes.json"))
+        let second = LegacyStorageMigration.migrate(from: old, to: current)
+        #expect(second.issues.isEmpty && second.changedFiles.isEmpty)
+        let recovered = try JSONDecoder().decode([ModelProbeReport].self, from: Data(contentsOf: current.appendingPathComponent("model-probes.json")))
+        #expect(recovered.first?.isConfirmed == true)
+    }
 }
