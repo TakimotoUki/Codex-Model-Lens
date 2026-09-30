@@ -138,8 +138,35 @@ struct FeatureTests {
         parser.consume(try wire(["type": "response.completed", "response": ["id": "resp_warm"]]))
         #expect(!report(parser).isConfirmed)
         var conflict = WireProbeParser()
-        conflict.consume(try wire(["type": "response.completed", "response": ["id": "resp_output", "model": "gpt-6-astra", "headers": ["openai-model": "gpt-5.6-luna"], "output": [["type": "message"]]]]))
+        conflict.consume(try wire(["type": "response.completed", "response": ["id": "resp_output", "model": "gpt-6-astra", "headers": ["openai-model": "gpt-5.6-luna", "x-openai-model": "gpt-6-astra"], "output": [["type": "message"]]]]))
         #expect(!report(conflict).isConfirmed && report(conflict).deliveredModels.count == 2)
+    }
+
+    @Test func websocketHeadersBeforeResponseIDConfirmEffectiveModel() throws {
+        var parser = WireProbeParser()
+        parser.consume(try wire(["type": "response.metadata", "headers": ["openai-model": "gpt-5.6-luna"]]))
+        parser.consume(try wire(["type": "response.metadata", "headers": ["x-request-id": "unrelated"]]))
+        parser.consume(try wire(["type": "response.created", "response": ["id": "resp_actual", "model": "gpt-6-astra"]]))
+        parser.consume(try wire(["type": "response.completed", "response": ["id": "resp_actual", "output": [["type": "message"]]]]))
+        #expect(report(parser).isConfirmed && report(parser).hasDifference)
+        #expect(report(parser).deliveredModels == ["gpt-5.6-luna"])
+        #expect(parser.responses.first?.models == ["gpt-6-astra"])
+    }
+
+    @Test func metadataAfterWarmupAppliesToNextResponseOnly() throws {
+        var parser = WireProbeParser()
+        parser.consume(try wire(["type": "response.completed", "response": ["id": "resp_warm", "model": "gpt-6-astra"]]))
+        parser.consume(try wire(["type": "response.metadata", "headers": ["openai-model": "gpt-5.6-luna"]]))
+        parser.consume(try wire(["type": "response.completed", "response": ["id": "resp_actual", "model": "gpt-6-astra", "output": [["type": "message"]]]]))
+        #expect(parser.responses.first?.headerModels.isEmpty == true)
+        #expect(report(parser).deliveredModels == ["gpt-5.6-luna"])
+    }
+
+    @Test func nestedResponseHeadersPrecedeTopLevelMetadata() throws {
+        var parser = WireProbeParser()
+        parser.consume(try wire(["type": "response.completed", "headers": ["openai-model": "gpt-6-astra"],
+            "response": ["id": "resp_actual", "model": "gpt-6-astra", "headers": ["openai-model": "gpt-5.6-luna"], "output": [["type": "message"]]]]))
+        #expect(report(parser).isConfirmed && report(parser).deliveredModels == ["gpt-5.6-luna"])
     }
 
 }
