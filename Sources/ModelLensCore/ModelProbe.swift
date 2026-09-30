@@ -9,6 +9,7 @@ public struct ProbeResponse: Codable, Identifiable, Sendable, Equatable {
     public var createdAt: Date?
     public var id: String { responseID }
     public var allModels: [String] { Array(Set(models + headerModels)).sorted() }
+    public var effectiveModels: [String] { Array(Set(headerModels.isEmpty ? models : headerModels)).sorted() }
 }
 public struct ModelProbeReport: Codable, Identifiable, Sendable, Equatable {
     public var id = UUID().uuidString
@@ -21,10 +22,10 @@ public struct ModelProbeReport: Codable, Identifiable, Sendable, Equatable {
     public var errorEvents: Int
     public var responses: [ProbeResponse]
     public var outputResponses: [ProbeResponse] { responses.filter { $0.hasOutput } }
-    public var deliveredModels: [String] { Array(Set(outputResponses.flatMap(\.allModels))).sorted() }
+    public var deliveredModels: [String] { Array(Set(outputResponses.flatMap(\.effectiveModels))).sorted() }
     public var isConfirmed: Bool {
         exitCode == 0 && !timedOut && errorEvents == 0 && !outputResponses.isEmpty &&
-        outputResponses.allSatisfy { $0.status == "completed" && $0.allModels.count == 1 }
+        outputResponses.allSatisfy { $0.status == "completed" && $0.effectiveModels.count == 1 }
     }
     public var hasDifference: Bool { isConfirmed && deliveredModels.contains { $0 != requestedModel } }
     public var label: String { isConfirmed ? hasDifference ? "发现模型差异" : "响应模型一致" : "本次核验未确认" }
@@ -35,6 +36,7 @@ struct WireProbeParser {
     var frames = 0
     var errors = 0
     private var currentID: String?
+    private var pendingHeaders: [String] = []
     mutating func consume(_ line: String) {
         let marker = line.range(of: "tungstenite::protocol: Received message ") ?? line.range(of: "SSE event: ")
         guard let marker, line.utf8.count <= 2 * 1024 * 1024,
@@ -43,15 +45,24 @@ struct WireProbeParser {
         frames += 1
         let response = object["response"] as? [String: Any] ?? [:]
         let id = response["id"] as? String ?? object["response_id"] as? String
+        let responseHeaders = serverModelHeaders(response["headers"])
+        let incomingHeaders = (responseHeaders.isEmpty ? serverModelHeaders(object["headers"]) : responseHeaders).map(\.1)
+        if type == "response.metadata", id == nil,
+           currentID == nil || responses.first(where: { $0.id == currentID })?.status == "completed" {
+            pendingHeaders = Array(Set(pendingHeaders + incomingHeaders)).sorted(); return
+        }
         if let id, id.hasPrefix("resp_"), id.count <= 200,
            id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "_-".contains($0)) }) {
             currentID = id
-            if !responses.contains(where: { $0.id == id }), responses.count < 128 { responses.append(ProbeResponse(responseID: id)) }
+            if !responses.contains(where: { $0.id == id }), responses.count < 128 {
+                var entry = ProbeResponse(responseID: id); entry.headerModels = pendingHeaders
+                responses.append(entry); pendingHeaders = []
+            }
         }
         if type == "error" || type == "response.failed" { errors += 1 }
         guard let currentID, let index = responses.firstIndex(where: { $0.id == currentID }) else { return }
         if let model = validModel(response["model"]), !responses[index].models.contains(model) { responses[index].models.append(model) }
-        for (_, model) in serverModelHeaders(response["headers"]) + serverModelHeaders(object["headers"]) {
+        for model in incomingHeaders {
             if !responses[index].headerModels.contains(model) { responses[index].headerModels.append(model) }
         }
         if let status = validModel(response["status"]) { responses[index].status = status }
