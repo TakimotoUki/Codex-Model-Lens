@@ -105,6 +105,7 @@ public actor OfficialCodexClient {
     private func configuredProcess(binary: URL, privateRun: URL) -> Process {
         let process = Process(); process.executableURL = binary; process.currentDirectoryURL = privateRun.appendingPathComponent("work")
         var env = ProcessInfo.processInfo.environment
+        env.removeValue(forKey: "LOG_FORMAT")
         for key in ["OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_BASE_URL", "OPENAI_ACCESS_TOKEN", "CODEX_MANAGED_BY_NPM", "CODEX_MANAGED_BY_BUN"] { env.removeValue(forKey: key) }
         env["CODEX_HOME"] = privateRun.appendingPathComponent("codex").path; env["RUST_LOG"] = "off"; env["NO_COLOR"] = "1"
         process.environment = env; return process
