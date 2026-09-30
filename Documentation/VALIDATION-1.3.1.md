@@ -18,4 +18,4 @@
 
 现有普通任务归档仅有轮次请求模型，不能因此确认为实际模型。日志中的聊天 / 工具引用不计入传输证据。当前桌面 IPC 可以初始化专用只读客户端，但任务 owner 查询未得到可用模型事件，因此没有接入不稳定或未核实的 IPC 模型检测。没有额外发送生成请求，也未重启 Codex。
 
-解析优先级根据 [OpenAI 官方 Codex Responses 实现](https://github.com/openai/codex/blob/6b2a7ed47cb662f375f47bcac908b8c17bedc75e/codex-rs/codex-api/src/sse/responses.rs#L192) 核对。软件读取服务端报告的字段，不能证明后台权重身份，也不会将独立核验套用到已有任务。
+解析优先级根据 [OpenAI 官方 Codex Responses 实现](https://github.com/openai/codex/blob/60947e234156ac12bdb7fba2477d3965f166bd34/codex-rs/codex-api/src/sse/responses.rs#L192) 核对。软件读取服务端报告的字段，不能证明后台权重身份，也不会将独立核验套用到已有任务。
