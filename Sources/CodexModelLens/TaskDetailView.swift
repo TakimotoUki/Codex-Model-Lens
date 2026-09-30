@@ -71,7 +71,7 @@ struct TaskDetailView: View {
             VStack(alignment: .leading, spacing: 0) {
                 modelLine(title: "轮次记录模型", model: turn.recordedModel ?? "暂无轮次记录", symbol: "slider.horizontal.3", accent: .secondary)
                 Divider().padding(.horizontal, 17)
-                modelLine(title: "服务端报告模型", model: turn.reportedModel ?? "暂无证据", symbol: "arrow.down.doc", accent: turn.hasModelDifference ? .orange : .blue)
+                modelLine(title: "服务端报告模型", model: turn.reportedModel ?? "本轮未记录服务端模型", symbol: "arrow.down.doc", accent: turn.hasModelDifference ? .orange : .blue)
             }
             .background(.quaternary.opacity(0.25), in: .rect(cornerRadius: 15))
             if let routed = turn.serverEvidence.last(where: { $0.kind == .reroute }), let from = routed.fromModel {
