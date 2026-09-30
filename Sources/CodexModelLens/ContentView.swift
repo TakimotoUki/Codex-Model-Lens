@@ -96,6 +96,10 @@ struct ContentView: View {
                 Section("证据状态") {
                     Label("\(store.evidenceCount) 条服务端记录", systemImage: "doc.text.magnifyingglass")
                         .font(.caption).foregroundStyle(.secondary)
+                    Button { store.showingProbe = true } label: {
+                        Label("独立核验 · \(store.probeReports.filter(\.isConfirmed).count) 条已确认", systemImage: "checkmark.shield")
+                            .font(.caption)
+                    }.buttonStyle(.plain)
                     Button { store.showingDiagnostics = true } label: {
                         Label(store.latestScan.diagnostics.isEmpty ? "查看检测范围" : "\(store.latestScan.diagnostics.count) 项读取提示",
                               systemImage: store.latestScan.diagnostics.isEmpty ? "info.circle" : "exclamationmark.circle")

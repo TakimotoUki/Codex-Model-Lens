@@ -39,8 +39,12 @@ struct ModelProbeView: View {
                             LabeledContent("输出响应模型", value: report.deliveredModels.isEmpty ? "未返回" : report.deliveredModels.joined(separator: "、"))
                             ForEach(report.responses) { response in
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(response.hasOutput ? "实际输出 · \(response.allModels.joined(separator: "、"))" : "无输出响应 · \(response.allModels.joined(separator: "、"))")
+                                    Text(response.hasOutput ? "实际输出 · \(response.effectiveModels.joined(separator: "、"))" : "无输出响应 · \(response.effectiveModels.joined(separator: "、"))")
                                         .font(.caption.weight(.medium))
+                                    if !response.headerModels.isEmpty && Set(response.models) != Set(response.headerModels) && !response.models.isEmpty {
+                                        Text("普通 model 字段：\(response.models.joined(separator: "、"))；优先采用模型响应头。")
+                                            .font(.caption2).foregroundStyle(.secondary)
+                                    }
                                     Text(response.responseID).font(.caption2.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
                                 }
                             }

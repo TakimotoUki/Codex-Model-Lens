@@ -47,7 +47,7 @@ OpenCode Go API 的 `percent` 是 0–100 百分数，`1` 表示已用 1%。工�
 
 ## 安装和首次运行
 
-1. 从 [Releases](https://github.com/TakimotoUki/Codex-Model-Lens/releases/latest) 下载 `Codex-Model-Lens-1.3.0-arm64.zip`，按同页校验文件检查 SHA-256。
+1. 从 [Releases](https://github.com/TakimotoUki/Codex-Model-Lens/releases/latest) 下载 `Codex-Model-Lens-1.3.1-arm64.zip`，按同页校验文件检查 SHA-256。
 2. 解压，将 **Codex Model Lens.app** 放入 Applications（系统或用户 Applications 均可）。不需要 Python、Node、Homebrew 或外部 Swift 包。
 3. 打开 App，在菜单栏找到取景框图标。点击它查看 Codex；通过“设置…”开启其他平台。
 4. 安装并登录对应的 Agent。Codex 通常使用 `~/.codex`；自定义 `CODEX_HOME` 可通过设置选择。Antigravity 需有可访问的本机登录语言服务；软件可在后台打开已安装 App。
@@ -73,6 +73,8 @@ Token 以 `k`（千）、`M`（百万）、`B`（十亿）显示：`12,345,678 �
 本机配置和轮次上下文只能说明请求了什么模型。真正可用的观察值是带明确关联的服务端模型字段或路由事件。普通 Codex 历史并不保证保存这些字段；服务端不公开的信息无法由本机软件补出。
 
 独立核验在私有临时目录复制当前登录，使用独立工作目录与配置，不继承用户 hooks / MCP / 规则，并禁用 shell、app、web search 和多 Agent 功能；只保存白名单模型字段、响应 ID、时间和状态，不保存原始回复、认证头或完整 trace。结束和取消后清理临时文件。它不会监控已有桌面连接，也不会把该次结果套用到其他任务。
+
+**1.3.1 修复：** 旧目录已迁移部分文件时，仍会逐文件恢复缺失核验和设置、合并模型证据。菜单与主窗口显示最近独立核验，不把它套用于其他任务。`response.metadata` 无响应 ID 的模型响应头也可在有明确轮次关联时保存；同一响应优先采用 `openai-model` / `x-openai-model`，普通 `model` 字段保留供核对。已删除任务不会因迁移恢复。迁移在后台执行；成功后保存完成标记，后续启动无需再读同一个旧目录。
 
 预热响应没有实际输出，不参与交付模型判断。没有输出归属、响应未完成、失败、超时、冲突字段或缺少模型时，核验保持未确认。只有本机日志不能证明服务端权重是否被替换，详见 [安全边界](SECURITY.md)。
 
@@ -128,7 +130,7 @@ GUI 演示 / UI QA（显式假数据，不发起用量网络请求）：
   --preview-path ./Data/menu-demo.png
 ```
 
-`--preview-timer`、`--preview-countdown`、`--demo-empty`、`--preview-light`、`--preview-diagnostics`、`--preview-utility settings` 可组合检查。截图只捕获本应用自己的可用窗口。
+`--preview-timer`、`--preview-countdown`、`--demo-empty`、`--preview-light`、`--preview-diagnostics`、`--preview-utility settings` 可组合检查。截图只捕获本应用自己的可用窗口。`--migration-audit /path/startup.json` 可输出逐文件恢复状态与已确认模型的白名单启动检查，不输出认证数据或响应正文。
 
 ## 验证与维护
 

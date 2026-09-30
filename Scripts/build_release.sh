@@ -6,7 +6,8 @@ if [[ "$(uname -m)" != "arm64" ]]; then
   exit 1
 fi
 swift build "${SWIFT_FLAGS[@]}" -c release --arch arm64
-APP_PATH="$TASK_ROOT/Distribution/Build-1.3/Codex Model Lens.app"
+APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Resources/Info.plist)"
+APP_PATH="$TASK_ROOT/Distribution/Build-$APP_VERSION/Codex Model Lens.app"
 mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources"
 cp .build/arm64-apple-macosx/release/CodexModelLens "$APP_PATH/Contents/MacOS/CodexModelLens"
 cp Resources/Info.plist "$APP_PATH/Contents/Info.plist"
@@ -15,5 +16,5 @@ cp Resources/AppIcon.icns "$APP_PATH/Contents/Resources/AppIcon.icns"
 cp .build/arm64-apple-macosx/release/model-lens Distribution/model-lens
 codesign --force --sign "${MODEL_LENS_SIGNING_IDENTITY:--}" --options runtime "$APP_PATH"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$TASK_ROOT/Distribution/Codex-Model-Lens-1.3.0-arm64.zip"
+ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$TASK_ROOT/Distribution/Codex-Model-Lens-$APP_VERSION-arm64.zip"
 print "Built: $APP_PATH"

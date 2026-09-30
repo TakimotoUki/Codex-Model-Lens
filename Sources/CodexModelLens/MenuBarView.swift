@@ -38,7 +38,23 @@ struct MenuBarView: View {
                     } else {
                         providerPicker
                         accountPicker
-                        if hub.provider == .codex { runningTasks }
+                        if hub.provider == .codex {
+                            runningTasks
+                            if let report = store.probeReports.first {
+                                HStack(alignment: .top) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("最近独立核验").font(.caption.weight(.medium))
+                                        Text(report.isConfirmed ? report.deliveredModels.joined(separator: "、") : report.label)
+                                            .font(.caption.monospaced()).foregroundStyle(report.isConfirmed ? .blue : .secondary)
+                                        Text("\(report.testedAt.formatted(.dateTime.month().day().hour().minute())) · 仅属于该测试")
+                                            .font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Button("查看") { delegate.showMainWindow(); store.showingProbe = true }.buttonStyle(.link).font(.caption)
+                                }
+                                Divider()
+                            }
+                        }
                         UsageSnapshotView(snapshot: hub.current, loading: hub.loading.contains(hub.currentID), error: hub.errors[hub.currentID])
                     }
                 }.padding(16).fixedSize(horizontal: false, vertical: true)
