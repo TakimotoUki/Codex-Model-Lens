@@ -64,6 +64,8 @@ final class LensStore {
     private var lastSavedSignature = ""
     var requestSearch = ""
     let dataDirectory: URL
+    private let legacyDirectory: URL?
+    private var migrationWarning: String?
     private var scanner: CodexScanner
     private var monitorTask: Task<Void, Never>?
     private var canSaveHistory = true
@@ -109,8 +111,9 @@ final class LensStore {
         requestSearch = threadID ?? ""; showingRequests = true
     }
 
-    init(dataDirectory: URL) {
+    init(dataDirectory: URL, legacyDirectory: URL? = nil) {
         self.dataDirectory = dataDirectory
+        self.legacyDirectory = legacyDirectory
         pomodoro = PomodoroController(directory: dataDirectory)
         usage = UsageHub(directory: dataDirectory)
         if let data = try? Data(contentsOf: dataDirectory.appendingPathComponent("model-probes.json")) {
@@ -129,17 +132,25 @@ final class LensStore {
         isScanning = true
         defer { isScanning = false }
         let directory = dataDirectory
+        let legacy = legacyDirectory
         let restored = await Task.detached(priority: .utility) {
+            let migration = legacy.map { LegacyStorageMigration.migrate(from: $0, to: directory) } ?? StorageMigrationReport()
+            let probes = (try? Data(contentsOf: directory.appendingPathComponent("model-probes.json")))
+                .flatMap { try? JSONDecoder().decode([ModelProbeReport].self, from: $0) }
             var settings = LensSettings()
             if let data = try? Data(contentsOf: directory.appendingPathComponent("settings.json")),
                let decoded = try? JSONDecoder().decode(LensSettings.self, from: data) { settings = decoded }
             do {
-                return InitialState(settings: settings, history: try HistoryStore.load(from: directory.appendingPathComponent("model-history.json")), error: nil)
+                return InitialState(settings: settings, history: try HistoryStore.load(from: directory.appendingPathComponent("model-history.json")), error: nil, migration: migration, probes: probes)
             } catch {
-                return InitialState(settings: settings, history: HistoryArchive(), error: error.localizedDescription)
+                return InitialState(settings: settings, history: HistoryArchive(), error: error.localizedDescription, migration: migration, probes: probes)
             }
         }.value
         settings = restored.settings
+        if let probes = restored.probes { probeReports = probes }
+        migrationWarning = restored.migration.issues.isEmpty ? nil : restored.migration.issues.joined(separator: "\n")
+        storageError = migrationWarning
+        writeMigrationAudit(restored.migration)
         archive = restored.history
         for i in archive.threads.indices {
             for j in archive.threads[i].turns.indices where archive.threads[i].turns[j].status == .running {
@@ -154,6 +165,17 @@ final class LensStore {
             codexHome: URL(fileURLWithPath: settings.codexHome),
             desktopLogs: settings.scanDesktopLogs ? URL(fileURLWithPath: settings.desktopLogs) : nil,
             importedEvidence: importedDirectory))
+    }
+
+    private func writeMigrationAudit(_ report: StorageMigrationReport) {
+        let args = CommandLine.arguments
+        guard let index = args.firstIndex(of: "--migration-audit"), args.indices.contains(index + 1) else { return }
+        let audit: [String: Any] = ["changedFiles": report.changedFiles, "issues": report.issues,
+            "probeReports": probeReports.count, "confirmedProbeReports": probeReports.filter(\.isConfirmed).count,
+            "confirmedModels": probeReports.filter(\.isConfirmed).flatMap(\.deliveredModels)]
+        if let bytes = try? JSONSerialization.data(withJSONObject: audit, options: [.prettyPrinted, .sortedKeys]) {
+            try? bytes.write(to: URL(fileURLWithPath: args[index + 1]), options: .atomic)
+        }
     }
 
     func start() {
@@ -189,7 +211,7 @@ final class LensStore {
             let snapshot = archive, destination = historyURL
             do {
                 try await Task.detached(priority: .utility) { try HistoryStore.save(snapshot, to: destination) }.value
-                storageError = nil; lastSavedSignature = signature
+                storageError = migrationWarning; lastSavedSignature = signature
             } catch { storageError = "无法保存检测历史：\(error.localizedDescription)" }
         }
     }
@@ -306,6 +328,8 @@ private struct InitialState: Sendable {
     var settings: LensSettings
     var history: HistoryArchive
     var error: String?
+    var migration: StorageMigrationReport
+    var probes: [ModelProbeReport]?
 }
 
 enum ImportError: Error, LocalizedError {
