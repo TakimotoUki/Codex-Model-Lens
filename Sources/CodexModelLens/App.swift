@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import QuartzCore
 import UserNotifications
+import ModelLensCore
 @preconcurrency import ScreenCaptureKit
 
 @main
@@ -13,21 +14,18 @@ struct ModelLensApp: App {
         let args = CommandLine.arguments
         if args.contains("--preview-path") { FileHandle.standardError.write(Data("Preview: app initialized.\n".utf8)) }
         let directory: URL
+        var migration = StorageMigrationReport()
         if let index = args.firstIndex(of: "--data-directory"), args.indices.contains(index + 1) {
             directory = URL(fileURLWithPath: args[index + 1])
         } else {
             directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Codex Model Lens", isDirectory: true)
-            // Copy legacy portable storage once; keep the originals recoverable.
+            // Recover each missing file and merge evidence even when the directory
+            // already exists. Never overwrite newer settings or damaged archives.
             let legacy = Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("Data")
-            if !FileManager.default.fileExists(atPath: directory.path), FileManager.default.fileExists(atPath: legacy.appendingPathComponent("model-history.json").path) {
-                try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-                for name in ["model-history.json", "settings.json", "model-probes.json", "pomodoro.json", "ImportedEvidence"] {
-                    let source = legacy.appendingPathComponent(name)
-                    if FileManager.default.fileExists(atPath: source.path) { try? FileManager.default.copyItem(at: source, to: directory.appendingPathComponent(name)) }
-                }
-            }
+            migration = LegacyStorageMigration.migrate(from: legacy, to: directory)
         }
         let initialStore = LensStore(dataDirectory: directory)
+        if !migration.issues.isEmpty { initialStore.storageError = migration.issues.joined(separator: "\n") }
         _store = State(initialValue: initialStore)
         LensAppDelegate.bootstrapStore = initialStore
     }
