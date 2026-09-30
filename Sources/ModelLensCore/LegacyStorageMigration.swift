@@ -12,9 +12,15 @@ public enum LegacyStorageMigration {
     public static func migrate(from legacy: URL, to destination: URL) -> StorageMigrationReport {
         var report = StorageMigrationReport()
         guard legacy.standardizedFileURL != destination.standardizedFileURL else { return report }
+        let receiptURL = destination.appendingPathComponent("legacy-migration.json")
+        if let bytes = try? Data(contentsOf: receiptURL), bytes.count <= 4096,
+           let receipt = try? JSONDecoder().decode(MigrationReceipt.self, from: bytes),
+           receipt.version == 1, receipt.legacyPath == legacy.standardizedFileURL.path { return report }
+        var foundLegacyFiles = false
         for name in ["model-history.json", "model-probes.json", "settings.json", "pomodoro.json"] {
             let source = legacy.appendingPathComponent(name), target = destination.appendingPathComponent(name)
             guard FileManager.default.fileExists(atPath: source.path) else { continue }
+            foundLegacyFiles = true
             do {
                 let values = try source.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
                 guard values.isRegularFile == true, values.isSymbolicLink != true,
@@ -65,6 +71,7 @@ public enum LegacyStorageMigration {
         }
         let imports = legacy.appendingPathComponent("ImportedEvidence")
         for source in (try? FileManager.default.contentsOfDirectory(at: imports, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey])) ?? [] where source.pathExtension == "jsonl" {
+            foundLegacyFiles = true
             let target = destination.appendingPathComponent("ImportedEvidence").appendingPathComponent(source.lastPathComponent)
             guard !FileManager.default.fileExists(atPath: target.path) else { continue }
             do {
@@ -76,6 +83,10 @@ public enum LegacyStorageMigration {
                 report.changedFiles.append("ImportedEvidence/" + source.lastPathComponent)
             } catch { report.issues.append("一份导入证据未能迁移；原文件已保留。") }
         }
+        if foundLegacyFiles && report.issues.isEmpty {
+            do { try PrivateMetadata.save(MigrationReceipt(legacyPath: legacy.standardizedFileURL.path), to: receiptURL) }
+            catch { report.issues.append("迁移已完成，但无法保存完成标记。") }
+        }
         return report
     }
     private static func different<T: Codable>(_ value: T, at target: URL) throws -> Bool {
@@ -84,4 +95,9 @@ public enum LegacyStorageMigration {
         let prior = try JSONDecoder().decode(T.self, from: Data(contentsOf: target))
         return try encoder.encode(prior) != encoder.encode(value)
     }
+}
+
+private struct MigrationReceipt: Codable {
+    var version = 1
+    var legacyPath: String
 }
