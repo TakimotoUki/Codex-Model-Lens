@@ -38,7 +38,23 @@ struct MenuBarView: View {
                     } else {
                         providerPicker
                         accountPicker
-                        if hub.provider == .codex { runningTasks }
+                        if hub.provider == .codex {
+                            runningTasks
+                            if let report = store.probeReports.first {
+                                HStack(alignment: .top) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("最近独立核验").font(.caption.weight(.medium))
+                                        Text(report.isConfirmed ? report.deliveredModels.joined(separator: "、") : report.label)
+                                            .font(.caption.monospaced()).foregroundStyle(report.isConfirmed ? .blue : .secondary)
+                                        Text("\(report.testedAt.formatted(.dateTime.month().day().hour().minute())) · 仅属于该测试")
+                                            .font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Button("查看") { delegate.showMainWindow(); store.showingProbe = true }.buttonStyle(.link).font(.caption)
+                                }
+                                Divider()
+                            }
+                        }
                         UsageSnapshotView(snapshot: hub.current, loading: hub.loading.contains(hub.currentID), error: hub.errors[hub.currentID])
                     }
                 }.padding(16).fixedSize(horizontal: false, vertical: true)
@@ -113,109 +129,167 @@ struct MenuBarView: View {
                                         HStack { Text("模型未确认").foregroundStyle(.orange); Spacer(); Text("请求 \(thread.latestTurn?.recordedModel ?? thread.selectedModel ?? "未知")").foregroundStyle(.secondary).lineLimit(1) }.font(.caption)
                                     }
                                 }.frame(maxWidth: .infinity, alignment: .leading).padding(9)
-                                    .background(.quaternary.opacity(0.22), in: .rect(cornerRadius: 9))
-                            }.buttonStyle(.plain)
-                        }
-                    }
-                }.frame(height: min(CGFloat(tasks.count) * 74, 185))
+                                    .background(.quaternary.opacity(0.22), in: .rect(corn…7988 tokens truncated…oad["type"] as? String ?? ""
+            switch event {
+            case "task_started", "turn_started":
+                let id = payload["turn_id"] as? String ?? "legacy-\(locator)"
+                currentTurnID = id
+                updateTurn(id: id, time: time) { turn in
+                    turn.startedAt = LensDate.parse(payload["started_at"]) ?? time
+                    turn.status = .running; turn.completedAt = nil
+                }
+            case "task_complete", "turn_complete", "turn_aborted", "task_interrupted":
+                guard let id = payload["turn_id"] as? String ?? currentTurnID else { return }
+                updateTurn(id: id, time: time) { turn in
+                    turn.completedAt = LensDate.parse(payload["completed_at"]) ?? time
+                    turn.status = event.contains("abort") || event.contains("interrupt") ? .interrupted :
+                        payload["error"].map { $0 is NSNull ? TurnStatus.completed : .failed } ?? .completed
+                }
+                // Do not clear currentTurnID: late response metadata still belongs to this turn.
+            case "token_count":
+                if let id = currentTurnID, let info = payload["info"] as? [String: Any],
+                   let value = info["total_token_usage"] as? [String: Any] {
+                    updateTurn(id: id, time: time) { $0.tokenUsage = TokenUsage.parse(value) }
+                }
+            case "thread_settings_applied":
+                if let model = validModel(payload["model"]) { thread?.selectedModel = model }
+            case "model_reroute", "model_rerouted":
+                parseRouting(payload, time: time, source: source, locator: locator, allowStreamContext: true)
+            default: break
             }
-            Divider()
+            if let id = payload["turn_id"] as? String ?? currentTurnID {
+                updateTurn(id: id, time: time) { _ in }
+            }
+            return
+        }
+        // Never descend into response_item, tool results, user messages, or arbitrary JSON strings.
+        if type == "response_item" { return }
+        if object["method"] as? String == "model/safetyBuffering/updated",
+           let params = object["params"] as? [String: Any], let model = validModel(params["model"]) {
+            guard let turn = association(params, allowStreamContext: false, time: time) else {
+                unassociatedRecords += 1; return
+            }
+            updateTurn(id: turn, time: time) {
+                $0.evidence.append(ModelEvidence(kind: .safetyBuffering, model: model, timestamp: time,
+                    source: source, locator: locator, fasterModel: validModel(params["fasterModel"]),
+                    bufferingEnabled: params["showBufferingUi"] as? Bool))
+            }
+            return
+        }
+        if let method = object["method"] as? String, method == "model/rerouted",
+           let params = object["params"] as? [String: Any] {
+            parseRouting(params, time: time, source: source, locator: locator, allowStreamContext: false)
+            return
+        }
+        if type == "model/rerouted" || type == "model_rerouted" {
+            parseRouting(object, time: time, source: source, locator: locator, allowStreamContext: false)
+            return
+        }
+        // Whitelist server response envelopes, with an explicit association unless reading an
+        // already-associated rollout stream. Output text and model self-identification are ignored.
+        if type == "response.metadata" {
+            parseResponse(object["response"] as? [String: Any] ?? [:], envelope: object,
+                          time: time, source: source, locator: locator)
+        } else if ["response.created", "response.completed", "response.in_progress", "response.failed"].contains(type),
+           let response = object["response"] as? [String: Any] {
+            parseResponse(response, envelope: object, time: time, source: source, locator: locator)
+        } else if type.isEmpty, let response = object["response"] as? [String: Any], response["object"] as? String == "response" {
+            parseResponse(response, envelope: object, time: time, source: source, locator: locator)
         }
     }
-    private func refresh(force: Bool = false) {
-        guard !CommandLine.arguments.contains("--preview-path") else { return }
-        hub.refresh(codexHome: URL(fileURLWithPath: store.settings.codexHome), force: force)
+
+    mutating func parseRouting(_ params: [String: Any], time: Date, source: String, locator: String,
+                               allowStreamContext: Bool) {
+        guard let model = validModel(params["toModel"] ?? params["to_model"]) else { return }
+        guard let pair = association(params, allowStreamContext: allowStreamContext, time: time) else {
+            unassociatedRecords += 1; return
+        }
+        let evidence = ModelEvidence(kind: .reroute, model: model,
+                                     fromModel: validModel(params["fromModel"] ?? params["from_model"]),
+                                     timestamp: time, source: source, locator: locator,
+                                     reason: safeReason(params["reason"]))
+        updateTurn(id: pair, time: time) { $0.evidence.append(evidence) }
+    }
+
+    mutating func parseResponse(_ response: [String: Any], envelope: [String: Any], time: Date,
+                               source: String, locator: String) {
+        let responseID = response["id"] as? String ?? envelope["response_id"] as? String
+        if let responseID, !responseID.hasPrefix("resp_") { return }
+        let model = validModel(response["model"])
+        let responseHeaders = serverModelHeaders(response["headers"])
+        let headers = responseHeaders.isEmpty ? serverModelHeaders(envelope["headers"]) : responseHeaders
+        // Official websocket metadata may precede the response ID. An explicit
+        // trusted turn association is enough for header evidence, without an invented ID.
+        guard responseID != nil || (envelope["type"] as? String == "response.metadata" && !headers.isEmpty) else { return }
+        guard model != nil || !headers.isEmpty else { return }
+        var identity = envelope
+        if let metadata = response["metadata"] as? [String: Any] {
+            for key in ["thread_id", "turn_id", "threadId", "turnId"] where identity[key] == nil {
+                identity[key] = metadata[key]
+            }
+        }
+        guard let id = association(identity, allowStreamContext: true, time: time) else {
+            unassociatedRecords += 1; return
+        }
+        let date = time == .distantPast ? LensDate.parse(response["created_at"]) ?? time : time
+        updateTurn(id: id, time: date) {
+            if let model {
+                $0.evidence.append(ModelEvidence(kind: .responseModel, model: model, timestamp: date,
+                                                source: source, locator: locator, responseID: responseID))
+            }
+            for (field, model) in headers {
+                $0.evidence.append(ModelEvidence(kind: .responseHeader, model: model, timestamp: date,
+                                                source: source, locator: locator, responseID: responseID, field: field))
+            }
+        }
+    }
+
+    mutating func association(_ object: [String: Any], allowStreamContext: Bool, time: Date) -> String? {
+        let threadID = object["threadId"] as? String ?? object["thread_id"] as? String
+        let turnID = object["turnId"] as? String ?? object["turn_id"] as? String
+        if let threadID, let existing = thread, existing.id != threadID { return nil }
+        if thread == nil, let threadID { thread = ThreadRecord(id: threadID, updatedAt: time) }
+        guard thread != nil else { return nil }
+        return turnID ?? (allowStreamContext ? currentTurnID : nil)
+    }
+
+    mutating func updateTurn(id: String, time: Date, _ update: (inout TurnRecord) -> Void) {
+        guard thread != nil else { return }
+        if let index = thread!.turns.firstIndex(where: { $0.id == id }) {
+            update(&thread!.turns[index])
+            thread!.turns[index].lastActivity = max(thread!.turns[index].lastActivity, time)
+        } else {
+            var turn = TurnRecord(id: id, startedAt: time)
+            update(&turn); thread!.turns.append(turn)
+        }
+        thread!.updatedAt = max(thread!.updatedAt, time)
     }
 }
 
-struct UsageSnapshotView: View {
-    let snapshot: UsageSnapshot?
-    var loading = false
-    var error: String?
-    var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            if let snapshot {
-                if let plan = snapshot.plan { Text(plan).font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
-                ForEach(snapshot.meters.prefix(6)) { meter in
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack { Text(meter.title); Spacer(); Text(meter.remainingPercent.map { String(format: "剩余 %.0f%%", $0) } ?? "剩余未知").monospacedDigit() }.font(.caption)
-                        if let left = meter.remainingPercent { ProgressView(value: left, total: 100).tint(left < 15 ? .orange : .blue) }
-                        if let reset = meter.resetsAt {
-                            HStack {
-                                Text("重置 \(reset.formatted(.dateTime.month().day().hour().minute()))")
-                                Spacer(); if reset > Date() { Text(reset, style: .relative) } else { Text("等待刷新") }
-                            }.font(.caption2).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                if snapshot.meters.count > 6 { Text("其他额度见 Usage Dashboard").font(.caption2).foregroundStyle(.secondary) }
-                if let balance = snapshot.balance {
-                    HStack { Text(snapshot.currency == "积分" ? "剩余积分" : "余额"); Spacer(); Text(balance, format: .number.precision(.fractionLength(0...2))); Text(snapshot.currency ?? "") }.font(.callout.weight(.medium))
-                    if let paid = snapshot.paidBalance, let granted = snapshot.grantedBalance {
-                        Text(String(format: "充值 %.2f · 赠送 %.2f", paid, granted)).font(.caption2).foregroundStyle(.secondary)
-                    }
-                }
-                HStack {
-                    metric("今日 Token · UTC", snapshot.todayTokens)
-                    Spacer(); metric("累计 Token", snapshot.tokens)
-                }
-                if let credits = snapshot.spentCredits { Text(String(format: "本机已记录消耗 · %.2f 积分", credits)).font(.callout.weight(.medium)) }
-                if let cost = snapshot.recordedCost { Text(String(format: "本机记录 Cost · $%.4f", cost)).font(.caption) }
-                if let note = snapshot.note { Text(note).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-                HStack {
-                    Text("更新 \(snapshot.fetchedAt.formatted(.dateTime.hour().minute()))")
-                    if Date().timeIntervalSince(snapshot.fetchedAt) > 300 { Text("· 缓存") }
-                }.font(.caption2).foregroundStyle(.tertiary)
-            } else { Text(loading ? "正在读取账户…" : "刷新以读取用量；需要对应 Agent 登录或已添加的 API Key。").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-            if let error { Text(error).font(.caption2).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
-        }
-    }
-    private func metric(_ title: String, _ value: Int64?) -> some View {
-        VStack(alignment: .leading, spacing: 3) { Text(title).font(.caption2).foregroundStyle(.secondary); Text(value.map(CompactNumber.tokens) ?? "暂无数据").font(.caption.weight(.medium).monospacedDigit()) }
+func serverModelHeaders(_ value: Any?) -> [(String, String)] {
+    guard let headers = value as? [String: Any] else { return [] }
+    return headers.keys.sorted().compactMap { key in
+        guard ["openai-model", "x-openai-model"].contains(key.lowercased()) else { return nil }
+        let value = headers[key] as? String ?? (headers[key] as? [String])?.first
+        return validModel(value).map { (key.lowercased(), $0) }
     }
 }
 
-struct PomodoroView: View {
-    @Bindable var controller: PomodoroController
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("番茄钟", systemImage: "timer").font(.subheadline.weight(.semibold))
-                Spacer()
-                Button { controller.showDurationEditor.toggle() } label: { Image(systemName: "slider.horizontal.3") }.buttonStyle(.borderless).help("自定义时间")
-            }
-            if controller.showDurationEditor {
-                HStack(spacing: 12) {
-                    duration("专注", $controller.state.focusMinutes, maximum: 240)
-                    duration("休息", $controller.state.restMinutes, maximum: 120)
-                }.onChange(of: controller.state.focusMinutes) { _, _ in controller.saveDurations() }
-                    .onChange(of: controller.state.restMinutes) { _, _ in controller.saveDurations() }
-            }
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(controller.state.phase == .idle ? "\(controller.state.focusMinutes):00" : controller.text)
-                        .font(.system(size: 28, weight: .medium, design: .rounded).monospacedDigit())
-                    Text(controller.state.phase == .idle ? "专注 \(controller.state.focusMinutes) 分钟 · 休息 \(controller.state.restMinutes) 分钟" : controller.title + (controller.state.isPaused ? " · 已暂停" : "中"))
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-                Spacer()
-                if controller.state.phase == .idle {
-                    Button("开始") { controller.start() }.buttonStyle(.glassProminent)
-                    Button("休息") { controller.start(rest: true) }.buttonStyle(.glass)
-                } else {
-                    Button { controller.togglePause() } label: { Image(systemName: controller.state.isPaused ? "play.fill" : "pause.fill") }.buttonStyle(.glass)
-                    Button { controller.stop() } label: { Image(systemName: "stop.fill") }.buttonStyle(.glass)
-                }
-            }
-            if let reminder = controller.reminder { Text(reminder).font(.caption).foregroundStyle(.blue) }
-            if let error = controller.storageError { Text(error).font(.caption2).foregroundStyle(.orange) }
-        }
-    }
-    private func duration(_ label: String, _ value: Binding<Int>, maximum: Int) -> some View {
-        HStack(spacing: 5) {
-            Text(label).font(.caption)
-            TextField("分钟", value: value, format: .number).textFieldStyle(.roundedBorder).frame(width: 46)
-            Stepper("", value: value, in: 1...maximum).labelsHidden()
-        }
-    }
+func validModel(_ value: Any?) -> String? {
+    guard let model = value as? String, !model.isEmpty, model.count <= 160,
+          model.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "-_.:/".contains($0)) }) else { return nil }
+    return model
+}
+
+private func safeReason(_ value: Any?) -> String? {
+    // Persist enum-like routing reasons, never free-form text that could contain credentials.
+    guard let value = value as? String, value.count <= 100,
+          value.allSatisfy({ $0.isLetter || $0.isNumber || "_-".contains($0) }) else { return nil }
+    return value
+}
+
+private func sourceName(_ value: Any?) -> String {
+    if let name = value as? String { return name }
+    if let object = value as? [String: Any] { return object.keys.sorted().joined(separator: "/") }
+    return "local"
 }
