@@ -25,6 +25,17 @@ struct EvidenceTests {
         #expect(!thread.hasServerEvidence)
     }
 
+    @Test func metadataHeaderWithoutResponseIDUsesExplicitTurn() throws {
+        let event: [String: Any] = ["type": "response.metadata", "timestamp": date, "threadId": "task-A", "turnId": "turn-1", "headers": ["openai-model": "gpt-5.6-luna"]]
+        let later: [String: Any] = ["type": "response.created", "timestamp": "2026-09-30T09:00:01Z", "response": ["id": "resp_actual", "model": "gpt-6-astra"]]
+        let turn = try #require(parsed([meta, start, context, event, later]).thread?.latestTurn)
+        #expect(turn.reportedModel == "gpt-5.6-luna" && turn.hasModelDifference)
+        #expect(turn.serverEvidence.first?.responseID == nil)
+        #expect(turn.serverEvidence.count == 2)
+        let missing = try parsed([["type": "response.metadata", "headers": ["openai-model": "gpt-5.6-luna"]]])
+        #expect(missing.thread == nil && missing.unassociatedRecords == 1)
+    }
+
     @Test func explicitRerouteDetectsRequestedExample() throws {
         let route: [String: Any] = ["method": "model/rerouted", "timestamp": date,
                                    "params": ["threadId": "task-A", "turnId": "turn-1", "fromModel": "gpt-6-astra", "toModel": "gpt-5.6-luna", "reason": "capacity"]]
@@ -93,5 +104,17 @@ struct EvidenceTests {
         let turn = try #require(parsed([meta, start, context, route]).thread?.latestTurn)
         #expect(turn.serverEvidence.first?.reason == nil)
         #expect(validModel("gpt\nsecret") == nil)
+    }
+
+    @Test func headerPrecedenceIsLimitedToItsResponse() {
+        let time = Date(timeIntervalSince1970: 1000)
+        var turn = TurnRecord(id: "turn", startedAt: time)
+        turn.requestedModel = "gpt-6-astra"
+        turn.evidence = [
+            ModelEvidence(kind: .responseHeader, model: "gpt-5.6-luna", timestamp: time, source: "wire", locator: "1", responseID: "resp_first"),
+            ModelEvidence(kind: .responseModel, model: "gpt-6-astra", timestamp: time.addingTimeInterval(1), source: "wire", locator: "2", responseID: "resp_first"),
+            ModelEvidence(kind: .responseModel, model: "gpt-6-sol", timestamp: time.addingTimeInterval(10), source: "wire", locator: "3", responseID: "resp_second")]
+        #expect(turn.reportedModel == "gpt-6-sol")
+        #expect(turn.effectiveServerEvidence.count == 2 && turn.hasModelDifference)
     }
 }
