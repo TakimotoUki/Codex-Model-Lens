@@ -131,10 +131,13 @@ struct ParsedStream {
     mutating func parseResponse(_ response: [String: Any], envelope: [String: Any], time: Date,
                                source: String, locator: String) {
         let responseID = response["id"] as? String ?? envelope["response_id"] as? String
-        guard let responseID, responseID.hasPrefix("resp_") else { return }
+        if let responseID, !responseID.hasPrefix("resp_") { return }
         let model = validModel(response["model"])
         let responseHeaders = serverModelHeaders(response["headers"])
         let headers = responseHeaders.isEmpty ? serverModelHeaders(envelope["headers"]) : responseHeaders
+        // Official websocket metadata may precede the response ID. An explicit
+        // trusted turn association is enough for header evidence, without an invented ID.
+        guard responseID != nil || (envelope["type"] as? String == "response.metadata" && !headers.isEmpty) else { return }
         guard model != nil || !headers.isEmpty else { return }
         var identity = envelope
         if let metadata = response["metadata"] as? [String: Any] {
