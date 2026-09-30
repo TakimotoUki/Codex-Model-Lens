@@ -74,7 +74,7 @@ Token 以 `k`（千）、`M`（百万）、`B`（十亿）显示：`12,345,678 �
 
 独立核验在私有临时目录复制当前登录，使用独立工作目录与配置，不继承用户 hooks / MCP / 规则，并禁用 shell、app、web search 和多 Agent 功能；只保存白名单模型字段、响应 ID、时间和状态，不保存原始回复、认证头或完整 trace。结束和取消后清理临时文件。它不会监控已有桌面连接，也不会把该次结果套用到其他任务。
 
-**1.3.1 修复：** 旧目录已迁移部分文件时，仍会逐文件恢复缺失核验和设置、合并模型证据。菜单与主窗口显示最近独立核验，不把它套用于其他任务。`response.metadata` 无响应 ID 的模型响应头也可在有明确轮次关联时保存；同一响应优先采用 `openai-model` / `x-openai-model`，普通 `model` 字段保留供核对。已删除任务不会因迁移恢复。
+**1.3.1 修复：** 旧目录已迁移部分文件时，仍会逐文件恢复缺失核验和设置、合并模型证据。菜单与主窗口显示最近独立核验，不把它套用于其他任务。`response.metadata` 无响应 ID 的模型响应头也可在有明确轮次关联时保存；同一响应优先采用 `openai-model` / `x-openai-model`，普通 `model` 字段保留供核对。已删除任务不会因迁移恢复。迁移在后台执行；成功后保存完成标记，后续启动无需再读同一个旧目录。
 
 预热响应没有实际输出，不参与交付模型判断。没有输出归属、响应未完成、失败、超时、冲突字段或缺少模型时，核验保持未确认。只有本机日志不能证明服务端权重是否被替换，详见 [安全边界](SECURITY.md)。
 
@@ -130,7 +130,7 @@ GUI 演示 / UI QA（显式假数据，不发起用量网络请求）：
   --preview-path ./Data/menu-demo.png
 ```
 
-`--preview-timer`、`--preview-countdown`、`--demo-empty`、`--preview-light`、`--preview-diagnostics`、`--preview-utility settings` 可组合检查。截图只捕获本应用自己的可用窗口。
+`--preview-timer`、`--preview-countdown`、`--demo-empty`、`--preview-light`、`--preview-diagnostics`、`--preview-utility settings` 可组合检查。截图只捕获本应用自己的可用窗口。`--migration-audit /path/startup.json` 可输出逐文件恢复状态与已确认模型的白名单启动检查，不输出认证数据或响应正文。
 
 ## 验证与维护
 
