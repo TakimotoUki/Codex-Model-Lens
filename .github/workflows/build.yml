@@ -6,6 +6,9 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   macOS:
     runs-on: macos-26
@@ -21,4 +24,4 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Codex-Model-Lens-arm64
-          path: Distribution/Codex-Model-Lens-1.3.0-arm64.zip
+          path: Distribution/Codex-Model-Lens-*-arm64.zip
