@@ -14,18 +14,16 @@ struct ModelLensApp: App {
         let args = CommandLine.arguments
         if args.contains("--preview-path") { FileHandle.standardError.write(Data("Preview: app initialized.\n".utf8)) }
         let directory: URL
-        var migration = StorageMigrationReport()
+        var legacy: URL?
         if let index = args.firstIndex(of: "--data-directory"), args.indices.contains(index + 1) {
             directory = URL(fileURLWithPath: args[index + 1])
         } else {
             directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Codex Model Lens", isDirectory: true)
             // Recover each missing file and merge evidence even when the directory
             // already exists. Never overwrite newer settings or damaged archives.
-            let legacy = Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("Data")
-            migration = LegacyStorageMigration.migrate(from: legacy, to: directory)
+            legacy = Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("Data")
         }
-        let initialStore = LensStore(dataDirectory: directory)
-        if !migration.issues.isEmpty { initialStore.storageError = migration.issues.joined(separator: "\n") }
+        let initialStore = LensStore(dataDirectory: directory, legacyDirectory: legacy)
         _store = State(initialValue: initialStore)
         LensAppDelegate.bootstrapStore = initialStore
     }
