@@ -11,3 +11,7 @@ if [[ -d "$TASK_DEVELOPER/usr/lib/swift/host/plugins/testing" ]]; then
   TEST_FLAGS+=(-Xswiftc -plugin-path -Xswiftc "$TASK_DEVELOPER/usr/lib/swift/host/plugins/testing")
 fi
 swift test "${SWIFT_FLAGS[@]}" "${TEST_FLAGS[@]}"
+
+if command -v python3 >/dev/null; then
+  python3 Scripts/test_network_capture.py
+fi
