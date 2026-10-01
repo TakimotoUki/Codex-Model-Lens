@@ -22,6 +22,7 @@ AI 协作通过 `AUTHORS.md` 与提交的 `Co-authored-by: Codex <codex@openai.c
 
 - **默认只出现在菜单栏。** 启动时没有 Dock 图标和主窗口；明确点击“打开主界面”才打开三栏 Codex 任务工作区。设置、账户与用量面板可直接从菜单打开。
 - **Codex 模型证据。** 当前和历史任务、轮次请求模型、服务端响应 `model`、`openai-model` / `x-openai-model` 以及明确 `model/rerouted` 事件；保留来源、时间、响应 / 请求 ID。不能确定关联的事件不按时间猜测归属。
+- **实时模型监听（1.4.0）。** 连接已登录桌面客户端的本机 IPC，读取当前轮次和历史快照中的明确路由事件；支持新版 canonical 历史与增量更新。连接验证同用户和 OpenAI 对端签名，只订阅、不执行任务。
 - **请求诊断。** 区分 `at capacity` 文字、`server_is_overloaded` 错误、失败请求、HTTP 状态与安全缓冲；保存本机日志覆盖时间。计数差异本身不能证明客户端撒谎或替换了模型。
 - **历史。** 本地原子保存、增量读取、JSON / CSV 导出、模型证据导入。移除本地任务后后续扫描跳过它，原始 Codex 会话保留。损坏或更新版本的历史文件不会被静默覆盖。
 - **独立模型核验。** 手动确认后用签名验证过的官方 CLI 发送一个 `pong` 测试，捕获原始入站响应的模型字段，区分预热响应和有输出的响应。会消耗少量 Codex 额度；从不自动发送。
@@ -78,6 +79,27 @@ Token 以 `k`（千）、`M`（百万）、`B`（十亿）显示：`12,345,678 �
 
 预热响应没有实际输出，不参与交付模型判断。没有输出归属、响应未完成、失败、超时、冲突字段或缺少模型时，核验保持未确认。只有本机日志不能证明服务端权重是否被替换，详见 [安全边界](SECURITY.md)。
 
+<a id="live-model-capture"></a>
+
+## 实时模型采集 (1.4.0)
+
+原来的文件扫描并不覆盖桌面客户端内存中尚未保存的模型事件。现在默认开启「实时监听桌面模型路由」，监控当前活动任务、最近任务和选中的历史任务；在「检测范围」可检查接口连接及状态快照数量。原始聊天内容只在通信帧解析期间暂时存在，不进入模型历史。路由快照的证据时间是**读取时间**，不是未公开的原始服务端时间；没有响应 ID 时留空。
+
+官方核心在处理服务端模型响应头后会记录 `server reported model …`。软件也能读取这个记录，包括与请求模型一致的情况。它需要明确的任务和轮次 ID，不会用时间接近、所选模型、对话自报身份或安全缓冲候选猜测关联。
+
+需要为后续响应开启更完整的观察时：
+
+1. 在 Model Lens 的设置中查看「服务端模型采集」。
+2. 在 Codex / ChatGPT 结束或暂停工作，并自行退出客户端。
+3. 点击「以模型采集模式打开 Codex / ChatGPT」，继续原任务或进行正常工作。
+4. 回到 Model Lens 查看模型证据、来源及轮次。正常退出并重新打开客户端可恢复默认日志级别。
+
+默认模式仅对指定核心模块开启 `info` 日志，只能记录客户端确实收到的模型事件。实验性「同时采集响应模型字段」会开启 SSE / WebSocket 调试日志，让原有解析器尝试读取 `response.model` 和模型响应头。**详细日志由 Codex 自身写入，可能含任务内容并增加磁盘 / CPU 开销；默认关闭，请勿公开分享原始日志。** 本应用保存的仍只有白名单模型元数据。设置只影响这次启动的进程环境，不修改 `~/.codex` 配置、认证、客户端 bundle、系统代理、证书或全局环境。
+
+该入口是有条件的采集工具，不能保证任意服务端或客户端版本都会公开模型字段。没有字段、协议版本不支持、缺少任务 / 轮次 ID 时，仍保持未确认。1.4.0 在本机已验证 IPC 能连接并读取两个现有任务的状态；当次没有明确路由事件。**重开客户端后的服务端日志采集尚未在现有任务上实测**，因为重新打开会中断当前开发任务。不会将这个实现或独立 `pong` 结果描述为已证实当前任务的实际模型。
+
+依据：[官方 App Server 事件文档](https://developers.openai.com/codex/app-server#turn-events)、[官方 ServerModel 处理实现](https://github.com/openai/codex/blob/cda82a2c6853b484e0ba56d38f13902adfb2a6a1/codex-rs/core/src/session/mod.rs)、[模型响应头解析实现](https://github.com/openai/codex/blob/8e44ad94b0519fbca39ed452bb2e1a6b43ad76a4/codex-rs/codex-api/src/sse/responses.rs)。完整验证记录见 [VALIDATION-1.4.md](Documentation/VALIDATION-1.4.md)。
+
 ## 数据存放与隐私
 
 正常运行数据位于：
@@ -109,7 +131,7 @@ cd Codex-Model-Lens
 ./Scripts/build_release.sh
 ```
 
-产物：`Distribution/Build-1.3/Codex Model Lens.app`、ZIP 和辅助 CLI。构建脚本优先选择安装的 macOS 26 SDK，所有缓存位于项目 `.build`，生成 arm64 包。CLI-only SwiftPM 当前使用 native 构建后端；其弃用提示不影响本次产物。
+产物：`Distribution/Build-1.4.0/Codex Model Lens.app`、ZIP 和辅助 CLI。构建脚本优先选择安装的 macOS 26 SDK，所有缓存位于项目 `.build`，生成 arm64 包。CLI-only SwiftPM 当前使用 native 构建后端；其弃用提示不影响本次产物。
 
 脚本默认 ad-hoc 签名。维护者可以设置 `MODEL_LENS_SIGNING_IDENTITY` 使用可用签名身份，再自行完成 Apple 公证流程。应用从 NSWorkspace 与标准安装位置发现 Agent，不包含开发者的绝对家目录。
 
@@ -117,6 +139,7 @@ cd Codex-Model-Lens
 
 ```sh
 Distribution/model-lens --summary
+Distribution/model-lens --desktop-live 10 --summary
 Distribution/model-lens --home /path/to/codex-home --client-offline --summary
 Distribution/model-lens --account --data-directory ./Data/PrivateQA --output ./Data/codex-usage.json
 Distribution/model-lens --provider antigravity --output ./Data/antigravity-usage.json
@@ -125,7 +148,7 @@ Distribution/model-lens --provider antigravity --output ./Data/antigravity-usage
 GUI 演示 / UI QA（显式假数据，不发起用量网络请求）：
 
 ```sh
-'Distribution/Build-1.3/Codex Model Lens.app/Contents/MacOS/CodexModelLens' \
+'Distribution/Build-1.4.0/Codex Model Lens.app/Contents/MacOS/CodexModelLens' \
   --demo --data-directory ./Data/Demo --preview-menu \
   --preview-path ./Data/menu-demo.png
 ```

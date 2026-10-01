@@ -11,3 +11,4 @@ Documentation/*.log
 Documentation/*sample*.txt
 .DS_Store
 *.dSYM/
+Resources/AppIcon.iconset/

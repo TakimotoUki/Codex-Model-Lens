@@ -75,6 +75,17 @@ public enum HistoryStore {
         return next
     }
 
+    /// Adding live evidence must not demote other active tasks or replace their titles/status.
+    public static func addingEvidence(_ records: [ThreadRecord], to archive: HistoryArchive) -> HistoryArchive {
+        var next = archive
+        let removed = Set(archive.removedThreadIDs ?? [])
+        for record in records where !removed.contains(record.id) {
+            guard let index = next.threads.firstIndex(where: { $0.id == record.id }) else { continue }
+            next.threads[index].turns = mergeTurns(next.threads[index].turns, record.turns)
+        }
+        return next
+    }
+
     static func mergeTurns(_ old: [TurnRecord], _ new: [TurnRecord]) -> [TurnRecord] {
         var turns = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
         for var current in new {
