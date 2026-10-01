@@ -4,8 +4,10 @@ public struct ScannerConfiguration: Sendable {
     public var codexHome: URL
     public var desktopLogs: URL?
     public var importedEvidence: URL?
-    public init(codexHome: URL, desktopLogs: URL? = nil, importedEvidence: URL? = nil) {
+    public var networkEvidence: URL?
+    public init(codexHome: URL, desktopLogs: URL? = nil, importedEvidence: URL? = nil, networkEvidence: URL? = nil) {
         self.codexHome = codexHome; self.desktopLogs = desktopLogs; self.importedEvidence = importedEvidence
+        self.networkEvidence = networkEvidence
     }
 }
 
@@ -176,7 +178,10 @@ public actor CodexScanner {
             result.sources?.append(ScanSourceStatus(id: "desktop", title: "桌面客户端日志", path: "", state: .disabled, detail: "可在检测设置中启用"))
         }
         if let imported = configuration.importedEvidence {
-            scanExternalFolder(imported, suffix: "jsonl", isDesktop: false, result: &result)
+            scanExternalFolder(imported, suffix: "jsonl", isDesktop: false, origin: .manualImport, result: &result)
+        }
+        if let network = configuration.networkEvidence {
+            scanExternalFolder(network, suffix: "jsonl", isDesktop: false, origin: .networkCapture, result: &result)
         }
         for external in externalEvidence.values { merge(external, into: &records, preferMetadata: false) }
         let evaluatedAt = now.addingTimeInterval(Date().timeIntervalSince(begin))
@@ -289,7 +294,7 @@ public actor CodexScanner {
         }
     }
 
-    private func scanExternalFolder(_ folder: URL, suffix: String, isDesktop: Bool, result: inout ScanResult) {
+    private func scanExternalFolder(_ folder: URL, suffix: String, isDesktop: Bool, origin: EvidenceOrigin? = nil, result: inout ScanResult) {
         let start = result.diagnostics.count
         let exists = FileManager.default.fileExists(atPath: folder.path)
         let files = enumerate(folder, suffix: suffix, diagnostics: &result.diagnostics)
@@ -315,7 +320,20 @@ public actor CodexScanner {
                     }
                     var stream = ParsedStream()
                     stream.consume(candidate, source: url.path, locator: "line:\(line)")
-                    if let thread = stream.thread { merge(thread, into: &externalEvidence, preferMetadata: false) }
+                    if var thread = stream.thread {
+                        var recordOrigin = origin
+                        // Before 1.5.2 the app wrote captures beside manual imports. The
+                        // importer always writes evidence-<hash>, never this reserved UUID name.
+                        let name = url.deletingPathExtension().lastPathComponent
+                        if origin == .manualImport, name.hasPrefix("network-models-"),
+                           UUID(uuidString: String(name.dropFirst("network-models-".count))) != nil,
+                           let object = try? JSONSerialization.jsonObject(with: candidate) as? [String: Any],
+                           object["imported_from"] == nil { recordOrigin = .networkCapture }
+                        for i in thread.turns.indices {
+                            for j in thread.turns[i].evidence.indices { thread.turns[i].evidence[j].origin = recordOrigin }
+                        }
+                        merge(thread, into: &externalEvidence, preferMetadata: false)
+                    }
                     if stream.malformedRecords > 0 || stream.unassociatedRecords > 0 {
                         result.diagnostics.append(ScanDiagnostic(source: url.path, message: "第 \(line) 行缺少有效结构或明确关联 ID，未作为证据使用。"))
                     }
@@ -328,7 +346,7 @@ public actor CodexScanner {
                 }
             } catch { result.diagnostics.append(ScanDiagnostic(source: url.path, message: error.localizedDescription)) }
         }
-        result.sources?.append(ScanSourceStatus(id: isDesktop ? "desktop" : "imports", title: isDesktop ? "桌面客户端日志" : "外部模型证据",
+        result.sources?.append(ScanSourceStatus(id: isDesktop ? "desktop" : origin == .networkCapture ? "network" : "imports", title: isDesktop ? "桌面客户端日志" : origin == .networkCapture ? "网络响应采集" : "外部模型证据",
             path: folder.path, state: !exists ? .missing : result.diagnostics.count > start ? .partial : .available,
             detail: !exists ? (isDesktop ? "日志目录不存在" : "尚未导入") : "\(files.count) 个文件"))
     }

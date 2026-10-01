@@ -97,7 +97,7 @@ final class LensAppDelegate: NSObject, NSApplicationDelegate, UNUserNotification
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem = item
         if let button = item.button {
-            button.image = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "Codex Model Lens")
+            button.image = MenuBarBrandIcon.image
             button.image?.isTemplate = true; button.imagePosition = .imageLeading
             button.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
             button.target = self; button.action = #selector(togglePopover)
@@ -249,7 +249,7 @@ final class LensAppDelegate: NSObject, NSApplicationDelegate, UNUserNotification
                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .sound])
     }
-    var maximumMenuBodyHeight: CGFloat { max(220, (statusItem?.button?.window?.screen?.visibleFrame.height ?? 900) - 200) }
+    var maximumMenuBodyHeight: CGFloat { max(160, min(680, (statusItem?.button?.window?.screen?.visibleFrame.height ?? 900) - 200)) }
     func resizePopover(height: CGFloat) {
         let target = NSSize(width: 390, height: max(160, min(820, ceil(height))))
         guard abs(popover.contentSize.height - target.height) > 1 else { return }

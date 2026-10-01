@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import CryptoKit
 
 public enum EvidenceKind: String, Codable, Sendable {
@@ -19,6 +20,10 @@ public enum EvidenceKind: String, Codable, Sendable {
     public var isServerClaim: Bool { self == .reroute || self == .responseModel || self == .responseHeader || self == .serverModel }
 }
 
+public enum EvidenceOrigin: String, Codable, Sendable {
+    case networkCapture, manualImport
+}
+
 public struct ModelEvidence: Codable, Identifiable, Sendable, Equatable {
     public var id: String
     public var kind: EvidenceKind
@@ -32,6 +37,8 @@ public struct ModelEvidence: Codable, Identifiable, Sendable, Equatable {
     public var fasterModel: String?
     public var bufferingEnabled: Bool?
     public var field: String?
+    /// Assigned by the scanner's data source, never by fields in an imported payload.
+    public var origin: EvidenceOrigin?
 
     public init(kind: EvidenceKind, model: String, fromModel: String? = nil,
                 timestamp: Date, source: String, locator: String,
@@ -203,16 +210,21 @@ public func stableID(_ value: String) -> String {
 }
 
 public enum LensDate {
+    private static let fractional = Mutex(makeFormatter(fractional: true))
+    private static let whole = Mutex(makeFormatter(fractional: false))
+    private static func makeFormatter(fractional: Bool) -> ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = fractional ? [.withInternetDateTime, .withFractionalSeconds] : [.withInternetDateTime]
+        return formatter
+    }
     public static func parse(_ value: Any?) -> Date? {
         if let number = value as? NSNumber {
             let seconds = number.doubleValue
+            guard seconds.isFinite else { return nil }
             return Date(timeIntervalSince1970: seconds > 100_000_000_000 ? seconds / 1000 : seconds)
         }
         guard let string = value as? String else { return nil }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: string) { return date }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: string)
+        if string.contains(".") { return fractional.withLock { $0.date(from: string) } }
+        return whole.withLock { $0.date(from: string) }
     }
 }

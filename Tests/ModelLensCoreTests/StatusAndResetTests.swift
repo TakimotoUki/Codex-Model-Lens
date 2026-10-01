@@ -33,11 +33,12 @@ struct StatusAndResetTests {
     private func status(_ components: [[String: Any]], incidents: [[String: Any]] = [], provider: UsageProvider = .codex) throws -> ServiceStatus {
         try ServiceStatusParser.parse(JSONSerialization.data(withJSONObject: ["components": components, "incidents": incidents]), provider: provider)
     }
-    @Test func otherOpenAIProductsDoNotMarkCodexDown() throws {
+    @Test func openAIIncludesChatGPTAndOtherPublicProducts() throws {
         let value = try status([["id": "codex", "name": "Codex", "status": "operational"], ["id": "chat", "name": "ChatGPT", "status": "major_outage"]],
                                incidents: [["status": "investigating", "components": [["id": "chat"]]]])
-        #expect(value.condition == .operational)
-        #expect(try status([["name": "ChatGPT", "status": "operational"]]).condition == .unknown)
+        #expect(value.condition == .outage)
+        #expect(try status([["name": "ChatGPT", "status": "operational"]]).condition == .operational)
+        #expect(try status([["name": "Codex", "status": "operational"], ["name": "Private", "status": "major_outage", "hidden": true]]).condition == .operational)
     }
     @Test func relevantIncidentsAndUnknownComponentStatesAreConservative() throws {
         #expect(try status([["id": "c", "name": "Codex", "status": "operational"]], incidents: [["status": "monitoring", "components": [["id": "c"]]]]).condition == .degraded)
@@ -45,8 +46,9 @@ struct StatusAndResetTests {
         #expect(try status([["name": "Codex", "status": "major_outage"]]).condition == .outage)
         #expect(try status([["name": "API", "status": "degraded_performance"]], provider: .deepseek).condition == .degraded)
     }
-    @Test func cloudFeedNeverClaimsAntigravityIsHealthy() throws {
-        #expect(try ServiceStatusParser.parse(Data("[]".utf8), provider: .antigravity).condition == .unknown)
+    @Test func emptyCloudHistoryReportsOnlyPublicCloudIncidents() throws {
+        let value = try ServiceStatusParser.parse(Data("[]".utf8), provider: .antigravity)
+        #expect(value.condition == .operational && !value.detail.contains("Antigravity"))
         #expect(throws: ProviderReadError.self) { try ServiceStatusParser.parse(Data("{}".utf8), provider: .antigravity) }
     }
     @Test func nativeOpenAIStatusRespectsGroupAndMissingAffectedList() throws {
@@ -57,7 +59,7 @@ struct StatusAndResetTests {
             if let affected { summary["affected_components"] = affected }
             return try ServiceStatusParser.parse(JSONSerialization.data(withJSONObject: ["summary": summary]), provider: .codex)
         }
-        #expect(try parse([["component_id": "g", "status": "major_outage"]]).condition == .operational)
+        #expect(try parse([["component_id": "g", "status": "major_outage"]]).condition == .outage)
         #expect(try parse([["component_id": "c", "status": "partial_outage"]]).condition == .degraded)
         #expect(throws: ProviderReadError.self) { try parse(nil) }
     }

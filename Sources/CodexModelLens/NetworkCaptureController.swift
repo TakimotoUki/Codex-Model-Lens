@@ -22,7 +22,7 @@ import ModelLensCore
             catch { message = "组件准备失败：\(error.localizedDescription)" }
         }
     }
-    func launch(outputDirectory: URL) {
+    func launch(outputDirectory: URL, codexHome: URL, dataDirectory: URL) {
         guard !busy, !isRunning else { return }
         guard !NSWorkspace.shared.runningApplications.contains(where: { ["com.openai.codex", "com.openai.chat"].contains($0.bundleIdentifier ?? "") }) else {
             message = CaptureLaunchError.alreadyRunning.localizedDescription; return
@@ -35,6 +35,8 @@ import ModelLensCore
             defer { busy = false; task = nil }
             do {
                 let environment = try await session.start(script: script, outputDirectory: outputDirectory)
+                message = "正在验证官方 Codex 的 TLS 与账户读取…"
+                _ = try await OfficialCodexClient().account(codexHome: codexHome, dataDirectory: dataDirectory, captureEnvironment: environment)
                 try await ModelCaptureLauncher.launch(environment: environment)
                 isRunning = true; message = "网络采集已启用 · 等待对应任务的新响应"
             } catch { await session.stop(); message = error.localizedDescription }

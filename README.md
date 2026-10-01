@@ -25,12 +25,13 @@ AI 协作通过 `AUTHORS.md` 与提交的 `Co-authored-by: Codex <codex@openai.c
 - **网络响应模型采集（1.5.0）。** 手动重新启动 Codex 后，用本机 HTTPS 反向代理读取服务端入站 WebSocket / SSE 的模型字段，按明确任务和轮次 ID 保存。无需修改原始 Codex 配置、系统代理或证书信任；按需下载独立组件，默认关闭。
 - **实时模型监听。** 连接已登录桌面客户端的本机 IPC，读取当前轮次和历史快照中的明确路由事件；支持新版 canonical 历史与增量更新。连接验证同用户和 OpenAI 对端签名，只订阅、不执行任务。
 - **请求诊断。** 区分 `at capacity` 文字、`server_is_overloaded` 错误、失败请求、HTTP 状态与安全缓冲；保存本机日志覆盖时间。计数差异本身不能证明客户端撒谎或替换了模型。
+- **一致图标。** 主界面和关于窗口共用应用图标；菜单栏使用同一机器人与放大镜的原生单色线条版本，自动适应深浅菜单栏。菜单弹窗顶部直接显示功能切换按钮，省去软件名与 Logo。
 - **历史。** 本地原子保存、增量读取、JSON / CSV 导出、模型证据导入。移除本地任务后后续扫描跳过它，原始 Codex 会话保留。损坏或更新版本的历史文件不会被静默覆盖。
 - **独立模型核验。** 手动确认后用签名验证过的官方 CLI 发送一个 `pong` 测试，捕获原始入站响应的模型字段，区分预热响应和有输出的响应。会消耗少量 Codex 额度；从不自动发送。
 - **多平台用量。** 五个平台可独立开启和关闭；仅所选、启用的平台按需读取。菜单参考 CodexBar 的紧凑组织方式，采用系统蓝色与原生 Liquid Glass 控件。
 - **添加账户。** Codex 登录文件、DeepSeek API Key、OpenCode Go API Key 或手动工作区 Cookie；随机账户 ID，钥匙串保存凭据，账户缓存分别保存。Antigravity / WorkBuddy 使用本机 Agent 当前登录。
 - **用量概览。** 区分购买余额、重置卡和积分；按账户保存最近 90 天的成功用量快照，累计 Token 图表明确标明计量范围。
-- **平台服务状态与关于。** 官方状态数据直接位于各平台 Token 下方；未知状态不推断为正常。关于窗口显示版本、开源链接和贡献署名。
+- **平台服务状态与关于。** 左对齐显示在用量底部。Codex 覆盖 OpenAI 全部公开组件与 RSS 事件；Antigravity 聚合 Gemini API / AI Studio 全部流量层级及 Google Cloud 全部公开事件；DeepSeek 使用官方 RSS。OpenCode Go、WorkBuddy 无可用官方状态接口，因此不显示状态区域。未返回的数据字段与失败的状态源不展示空占位。关于窗口显示版本、开源链接和贡献署名。
 - **独立番茄钟。** 自定义专注 1–240 分钟、休息 1–120 分钟，暂停、恢复、结束；菜单栏显示 `MM:SS` 并逐秒更新。使用截止时间计算，休眠后修正，时间到提醒；休息需手动开始。页面高度随内容调整，计时器操作不会刷新平台用量。
 
 ## 各平台支持范围
@@ -49,9 +50,9 @@ OpenCode Go API 的 `percent` 是 0–100 百分数，`1` 表示已用 1%。工�
 
 ## 安装和首次运行
 
-1. 从 [Releases](https://github.com/TakimotoUki/Codex-Model-Lens/releases/latest) 下载 `Codex-Model-Lens-1.5.0-arm64.zip`，按同页校验文件检查 SHA-256。
+1. 从 [Releases](https://github.com/TakimotoUki/Codex-Model-Lens/releases/latest) 下载 `Codex-Model-Lens-1.5.2-arm64.zip`，按同页校验文件检查 SHA-256。
 2. 解压，将 **Codex Model Lens.app** 放入 Applications（系统或用户 Applications 均可）。普通模式不需要 Python、Node、Homebrew 或外部 Swift 包。可选网络采集使用内置下载入口准备独立组件，无需额外安装这些运行环境。
-3. 打开 App，在菜单栏找到取景框图标。点击它查看 Codex；通过“设置…”开启其他平台。
+3. 打开 App，在菜单栏找到机器人与放大镜线条图标。点击它查看 Codex；通过“设置…”开启其他平台。
 4. 安装并登录对应的 Agent。Codex 通常使用 `~/.codex`；自定义 `CODEX_HOME` 可通过设置选择。Antigravity 需已安装并登录官方 App；没有运行中的语言服务时，软件会启动短期独立后台查询，结束后关闭。
 5. 如果 macOS 请求访问对应登录的钥匙串项，按系统提示确认。DeepSeek / OpenCode 的额外账户通过 **添加账户** 添加。
 6. 开始番茄钟时允许通知。拒绝通知权限时，App 仍运行期间会用原生提醒框和声音提示；退出 App 后该后备提示不可用。
@@ -60,7 +61,7 @@ OpenCode Go API 的 `percent` 是 0–100 百分数，`1` 表示已用 1%。工�
 
 ## 使用
 
-菜单的“用量 / 番茄钟”切换保持各自状态。平台按钮选择当前平台；有额外账户时显示账户选择器。顶部唯一刷新按钮更新本机任务和全部已启用平台的用量与服务状态；切换平台按需使用缓存。用量默认缓存 5 分钟；缓存保留原读取时间，失败不会假装更新成功。
+菜单顶部直接显示“用量 / 番茄钟”切换，保持各自状态。平台按钮选择当前平台；有额外账户时显示账户选择器。用量页面右下角、更多功能按钮左侧的唯一刷新按钮更新本机任务和全部已启用平台的用量与服务状态；切换平台按需使用缓存。用量默认缓存 5 分钟；缓存保留原读取时间，失败不会假装更新成功。
 
 Token 以 `k`（千）、`M`（百万）、`B`（十亿）显示：`12,345,678 → 12.35M`，`2,456,789,000 → 2.46B`。达到一亿时切入 `B`，所以一亿显示 `0.1B`。完整记录在导出的历史文件中；不将紧凑显示的四舍五入值用于统计。
 
@@ -70,9 +71,9 @@ Token 以 `k`（千）、`M`（百万）、`B`（十亿）显示：`12,345,678 �
 
 ## 重置卡与服务状态
 
-Codex 的重置卡读取官方 `account/rateLimits/read` 返回的 `rateLimitResetCredits.availableCount`。详情列表可能省略或截断，数量始终采用汇总字段；仅保留数量和可用卡的最近到期时间，不保存兑换 ID。字段未提供时显示“暂未提供”，不会默认为零。购买额度余额来自另一字段 `credits.balance`，不代表重置卡。应用不调用兑换或消耗接口。[官方重置卡说明](https://help.openai.com/zh-hans-cn/articles/20001498-how-banked-codex-resets-work)。
+Codex 的重置卡读取官方 `account/rateLimits/read` 返回的 `rateLimitResetCredits.availableCount`。详情列表可能省略或截断，数量始终采用汇总字段；仅保留数量和可用卡的最近到期时间，不保存兑换 ID。字段未提供时隐藏该行，不会默认为零。购买额度余额来自另一字段 `credits.balance`，不代表重置卡。余额与重置卡使用同层级、同字号文字，页面只有右下角统一刷新按钮。应用不调用兑换或消耗接口。[官方重置卡说明](https://help.openai.com/zh-hans-cn/articles/20001498-how-banked-codex-resets-work)。
 
-服务状态按需读取公开 HTTPS，每个平台缓存 5 分钟，不附加登录凭据或账户身份。Codex 使用官方 incident.io 中 Codex 分组状态，并结合 [OpenAI RSS](https://status.openai.com/feed.rss) 显示 Codex 相关最近事件；DeepSeek 使用 [官方 RSS](https://status.deepseek.com/feed.rss)，没有未解决记录时标明“官方订阅暂无未解决事件”，不将历史订阅冒充绝对实时健康检查。Antigravity 显示 [Google Cloud Atom](https://status.cloud.google.com/en/feed.atom) 的参考事件；订阅没有专属 Antigravity 覆盖，状态仍标明“参考订阅 · 未覆盖 Antigravity”。OpenCode / WorkBuddy 没有已验证的独立官方接口，显示“暂未提供”；读取失败和未知字段保持“状态未知”。XML 限制大小并拒绝 DTD、外部实体、非官方事件链接，事件文本按纯文字展示。
+服务状态按需读取公开 HTTPS，每个平台缓存 5 分钟，不附加登录凭据或账户身份。Codex 汇总 [OpenAI 状态页](https://status.openai.com/) 的全部公开组件，并结合 [OpenAI RSS](https://status.openai.com/feed.rss) 展示各产品最近事件。Antigravity 聚合 [Gemini API / AI Studio](https://aistudio.google.com/status) 全部流量层级与 [Google Cloud](https://status.cloud.google.com/) 公开状态，各来源单独标注；Google Cloud 的结果不等于 Antigravity 专属服务状态。DeepSeek 使用 [官方 RSS](https://status.deepseek.com/feed.rss)，没有未解决记录时标明“官方订阅暂无未解决事件”，不将历史订阅冒充绝对实时健康检查。OpenCode Go / WorkBuddy 没有已验证的独立官方接口，不显示状态区域；失败且没有可用事件的来源也不显示空占位。XML 限制大小并拒绝 DTD、外部实体、非官方事件链接，事件文本按纯文字展示。
 
 新应用图标采用用户提供的深色任务列表、机器人与放大镜图案，圆角外透明；平台菜单使用各平台官方图案，并统一为单色模板；选中时使用系统蓝色。图标来源和授权见第三方说明，标志仅用于识别服务，不表示合作关系。
 
@@ -94,9 +95,11 @@ Codex 的重置卡读取官方 `account/rateLimits/read` 返回的 `rateLimitRes
 
 1. 在 Model Lens 的 **设置 → 网络响应模型采集** 下载组件（约 52 MB）。普通扫描无需此组件。
 2. 保存工作、结束或暂停任务，**自行退出 Codex / ChatGPT**。软件不会自动关闭运行中的客户端。
-3. 点击 **以网络采集模式打开 Codex**。启动的客户端通过本机 `127.0.0.1` HTTPS 反向代理连接官方 ChatGPT 后端。
-4. 在重新打开的客户端继续任务。取得带明确 `thread_id` / `turn_id` 的新响应后，模型记录进入该轮次，并显示在主界面和菜单中。后台扫描通常在 15 秒内更新，也可点击菜单顶部统一刷新。
+3. 点击 **以网络采集模式打开 Codex**。软件先用隔离的官方 CLI 只读查询账户，验证这条代理连接的 TLS 和账户读取；成功后才打开桌面客户端，失败时停止本次代理并显示原因，不强行启动。启动的客户端通过本机 `127.0.0.1` HTTPS 反向代理连接官方 ChatGPT 后端。
+4. 在重新打开的客户端继续任务。取得带明确 `thread_id` / `turn_id` 的新响应后，模型记录进入该轮次，并显示在主界面和菜单中。后台扫描通常在 15 秒内更新，也可点击菜单右下角统一刷新。
 5. 结束时先退出 Codex，再在 Model Lens 点击 **停止采集**。正常重新打开 Codex 即恢复通常连接；代理运行期间请保持 Model Lens 开启。
+
+**1.5.1 修复登录连接：** 1.5.0 错误地把 CA 证书同时作为服务端证书，Codex 的 rustls 会报 `CaUsedAsEndEntity`。现在生成独立根 CA，并签发 `CA:FALSE`、`serverAuth`、含本机 SAN 的服务端证书；仅将根 CA 传给客户端。旧版采集导致连接失败时，请先正常打开 Codex 确认登录，再用新版采集入口。
 
 启动仅向该客户端传递 `CODEX_APP_SERVER_CHATGPT_BASE_URL` 与 `CODEX_CA_CERTIFICATE`。桌面客户端将前者转换为 `chatgpt_base_url` 启动参数，后者使用官方 rustls 自定义 CA 机制。**不修改 `~/.codex/config.toml`、认证文件、App bundle、系统代理、钥匙串或系统信任。** 该入口针对已验证版本的官方本机客户端；第三方中转、远程任务、云端任务及其他设备暂不覆盖。客户端更新后内部启动接口可能变化。
 
@@ -104,11 +107,11 @@ Codex 的重置卡读取官方 `account/rateLimits/read` 返回的 `rateLimitRes
 
 可选组件是固定版本 mitmproxy 12.2.3 官方 Apple Silicon 独立包。下载后先核验固定 SHA-256；此版本官方包存在包装签名问题，软件仅对其私有副本重建 ad-hoc 签名并校验，不更改系统安全策略。组件和临时证书位于本应用私有目录，证书密钥在正常停止后清理。来源、校验值与许可见 [第三方说明](THIRD-PARTY-NOTICES.md)。
 
-**本次已验证：** 你提供的真实 WebSocket 样本中，新解析器取得明确关联的服务端 `gpt-6.1-sol`，并跳过空轮次预热；Swift 启动的本机 HTTPS 代理与进程内证书信任路径通过检查。**尚未完成：** 本轮没有关闭当前 Codex / ChatGPT，也没有新增推理请求，桌面重新启动后正常任务响应的整条链路还需在使用时确认。不会把样本结果套用到其他任务。
+**实机验证（2026-10-01）：** 用户通过修复后的采集入口重新打开官方桌面客户端，正常任务响应的完整链路已取得两个并行任务分别上报的 `gpt-6.1-sol` 与 `gpt-6-luna`，并按任务及轮次 ID 独立关联。本软件没有为此额外发送模型测试请求；不会把一个任务的响应结果套用到另一个任务。不同客户端版本、第三方后端与其他设备的情况仍需要分别验证。
 
 IPC 实时监听和既有日志解析仍保留作补充。原日志采集入口仅启用指定核心模块 info；实验性 trace 默认关闭，开启后 Codex 自身可能在日志中保存任务内容。新的网络采集避免依赖完整 trace 落盘。
 
-依据：[官方进程内 CA 实现](https://github.com/openai/codex/blob/main/codex-rs/http-client/src/custom_ca.rs)、[官方 App Server 事件文档](https://developers.openai.com/codex/app-server#turn-events)。详细记录见 [VALIDATION-1.5.md](Documentation/VALIDATION-1.5.md)。
+依据：[官方进程内 CA 实现](https://github.com/openai/codex/blob/main/codex-rs/http-client/src/custom_ca.rs)、[官方 App Server 事件文档](https://developers.openai.com/codex/app-server#turn-events)。当前验证见 [VALIDATION-1.5.2.md](Documentation/VALIDATION-1.5.2.md)，历史记录见 [1.5.1](Documentation/VALIDATION-1.5.1.md) 与 [1.5.0](Documentation/VALIDATION-1.5.md)。
 
 ## 数据存放与隐私
 
@@ -123,6 +126,7 @@ IPC 实时监听和既有日志解析仍保留作补充。原日志采集入口�
   usage-preferences.json         平台开关、账户标签与选定账户（无秘密）
   usage-history.json             用量元数据快照
   ImportedEvidence/              导入后仅含白名单字段的证据
+  NetworkEvidence/               网络响应采集的白名单模型元数据
   PrivateRuns/                   活跃 CLI 的临时私有登录目录，用后清理
   NetworkTools/                  可选采集组件与临时本机证书
 ```
@@ -142,7 +146,7 @@ cd Codex-Model-Lens
 ./Scripts/build_release.sh
 ```
 
-产物：`Distribution/Build-1.5.0/Codex Model Lens.app`、ZIP 和辅助 CLI。构建脚本优先选择安装的 macOS 26 SDK，所有缓存位于项目 `.build`，生成 arm64 包。CLI-only SwiftPM 当前使用 native 构建后端；其弃用提示不影响本次产物。
+产物：`Distribution/Build-1.5.2/Codex Model Lens.app`、ZIP 和辅助 CLI。构建脚本优先选择安装的 macOS 26 SDK，所有缓存位于项目 `.build`，生成 arm64 包。CLI-only SwiftPM 当前使用 native 构建后端；其弃用提示不影响本次产物。
 
 脚本默认 ad-hoc 签名。维护者可以设置 `MODEL_LENS_SIGNING_IDENTITY` 使用可用签名身份，再自行完成 Apple 公证流程。应用从 NSWorkspace 与标准安装位置发现 Agent，不包含开发者的绝对家目录。
 
@@ -162,18 +166,18 @@ Distribution/model-lens --service-status deepseek
 GUI 演示 / UI QA（显式假数据，不发起用量网络请求）：
 
 ```sh
-'Distribution/Build-1.5.0/Codex Model Lens.app/Contents/MacOS/CodexModelLens' \
+'Distribution/Build-1.5.2/Codex Model Lens.app/Contents/MacOS/CodexModelLens' \
   --demo --data-directory ./Data/Demo --preview-menu \
   --preview-path ./Data/menu-demo.png
 ```
 
-`--preview-timer`、`--preview-countdown`、`--demo-empty`、`--preview-light`、`--preview-diagnostics`、`--preview-utility settings` 可组合检查。截图只捕获本应用自己的可用窗口。`--migration-audit /path/startup.json` 可输出逐文件恢复状态与已确认模型的白名单启动检查，不输出认证数据或响应正文。
+`--demo-long-titles --demo-tasks 2` 可检查中栏长标题和选中行；`--preview-provider antigravity` 可检查 Google 双源状态与缺失字段隐藏。`--demo-tasks 2 --demo-unconfirmed` 可检查多个较矮任务行，`--demo-tasks 8` 可检查滚动上限。`--preview-timer`、`--preview-countdown`、`--demo-empty`、`--preview-light`、`--preview-diagnostics`、`--preview-utility settings` 可组合检查。截图只捕获本应用自己的可用窗口。`--migration-audit /path/startup.json` 可输出逐文件恢复状态与已确认模型的白名单启动检查，不输出认证数据或响应正文。
 
 ## 验证与维护
 
 实现采用增量文件游标、复用读取缓冲、只读 SQLite、按需账户读取、截止时间计时、原子写入和后台扫描。菜单栏背景扫描至少间隔 15 秒，Codex 关闭时 60 秒；计时器空闲或暂停时没有秒级 ticker，状态文件不每秒写入。
 
-测试覆盖模型关联、伪装提示排除、安全缓冲边界、预热 / 实际输出区分、冲突响应字段、历史损坏保护、增量文件替换、Token 溢出 / 单位、平台解析、Token 去重与计时恢复。新增检查覆盖并行网络任务关联、跨轮次隔离、代理缓冲上限、SSE 分片、入站 / 出站区分、后台额度协议默认值、RSS / Atom 与 XML 安全边界。1.5.0 共 89 个 Swift 测试与 7 个代理插件测试；真实数据源与边界见 [VALIDATION-1.5.md](Documentation/VALIDATION-1.5.md)，早期 UI / 性能记录见 [VALIDATION-1.3.md](Documentation/VALIDATION-1.3.md)。未具有凭据的平台使用离线结构测试；接口版本变化应按真实来源更新解析器。代码审核和测试不等于证明不存在任何漏洞。
+测试覆盖模型关联、伪装提示排除、安全缓冲边界、预热 / 实际输出区分、冲突响应字段、历史损坏保护、增量文件替换、Token 溢出 / 单位、平台解析、Token 去重与计时恢复。新增检查覆盖并行网络任务关联、跨轮次隔离、代理缓冲上限、SSE 分片、入站 / 出站区分、后台额度协议默认值、RSS / Atom 与 XML 安全边界。1.5.2 共 95 个 Swift 测试与 7 个代理插件测试，包含采集来源迁移、Google 状态解析与全部服务覆盖；真实数据源与验证边界见 [VALIDATION-1.5.2.md](Documentation/VALIDATION-1.5.2.md)，早期 UI / 性能记录见 [VALIDATION-1.3.md](Documentation/VALIDATION-1.3.md)。未具有凭据的平台使用离线结构测试；接口版本变化应按真实来源更新解析器。代码审核和测试不等于证明不存在任何漏洞。
 
 源代码公开前排除 `Data`、构建缓存、发行产物、私人探测文件、原始日志和实际账户截图。Release 仅含 App；用户数据不会随安装包发布。
 
@@ -182,3 +186,9 @@ GUI 演示 / UI QA（显式假数据，不发起用量网络请求）：
 MIT License。项目所有者与产品设计：**[TakimotoUki](https://github.com/TakimotoUki)**；实现、研究、测试、文档与网站：在用户指示下与 **Codex AI** 协作。详见 [AUTHORS.md](AUTHORS.md)。
 
 感谢 [CodexBar](https://github.com/steipete/CodexBar) 的界面组织与公开数据源研究；本应用增加 Codex 模型证据工作区与独立番茄钟。相关来源与授权说明见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+
+### 网络采集来源与状态范围（1.5.2）
+
+本机代理产生的记录标为“网络响应采集”，不再被误标为导入未认证。新增采集存于私有 `NetworkEvidence/`；旧版本在 `ImportedEvidence/` 下生成的保留 UUID 文件名仍可读取，手动导入器生成的 `evidence-<hash>.jsonl` 标为“手动导入”。这是来源说明，不是密码学认证：有权限修改本地文件的进程仍可改动元数据。明确响应字段能确定服务端对该请求上报的模型名，不能证明服务端的模型权重。
+
+Google Gemini 状态复用官方 AI Studio 状态页的匿名 `ListIncidentsHistory` 查询，空请求 `[]`，动态读取官方公开网页客户端标识；不使用你的 Google 登录、Cookie、个人 API Key，不将网页标识写入钥匙串或历史。接口为网页内部接口，格式变化时隐藏该不可用来源；Google Cloud 使用官方 incidents JSON 和 Atom。平台用量继续走各自已授权的本机数据源。所有官方组件都参与 OpenAI 汇总，不把 ChatGPT 或 API 的事件丢弃。RSS 事件列表本身不证明每个服务都正常。

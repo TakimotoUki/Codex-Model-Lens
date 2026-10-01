@@ -13,7 +13,7 @@ public struct DesktopMonitorStatus: Sendable, Equatable {
 /// All mutable state is confined to queue. The socket is receive driven, without a
 /// polling timer. Only metadata projections are passed to the application.
 public final class DesktopModelMonitor: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "ModelLens.desktop-model-events", qos: .utility)
+    private let queue = DispatchQueue(label: "ModelLens.desktop-model-events", qos: .utility, autoreleaseFrequency: .workItem)
     private let receive: @Sendable ([ThreadRecord], DesktopMonitorStatus) -> Void
     private var home: URL?
     private var wanted: Set<String> = []
@@ -115,7 +115,9 @@ public final class DesktopModelMonitor: @unchecked Sendable {
                 }
                 guard input.count >= count + 4 else { break }
                 let data = Data(input.dropFirst(4).prefix(count))
-                input.removeFirst(count + 4); handle(data)
+                input.removeFirst(count + 4)
+                if input.isEmpty { input = Data() }
+                autoreleasepool { handle(data) }
                 if descriptor < 0 { return }
             }
         }

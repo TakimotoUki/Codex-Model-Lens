@@ -90,21 +90,21 @@ public actor NetworkCaptureSession {
         let output = outputDirectory.appendingPathComponent("network-models-" + UUID().uuidString + ".jsonl")
         guard FileManager.default.createFile(atPath: output.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { throw NetworkCaptureError.startup }
         let port = try availablePort()
+        let authority = temporary.appendingPathComponent("root-ca.pem")
+        let authorityKey = temporary.appendingPathComponent("root-ca-key.pem")
         let certificate = temporary.appendingPathComponent("localhost-cert.pem")
         let key = temporary.appendingPathComponent("localhost-key.pem")
+        let request = temporary.appendingPathComponent("localhost.csr")
         let pem = temporary.appendingPathComponent("localhost.pem")
         let configuration = temporary.appendingPathComponent("localhost.cnf")
-        let contents = "[req]\ndefault_bits=2048\ndistinguished_name=dn\nx509_extensions=extensions\nprompt=no\n[dn]\nCN=127.0.0.1\n[extensions]\nsubjectAltName=IP:127.0.0.1\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,digitalSignature,keyEncipherment,keyCertSign\n"
+        let contents = "[req]\ndistinguished_name=dn\nprompt=no\n[dn]\nCN=127.0.0.1\n[root]\nbasicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\nsubjectKeyIdentifier=hash\n[server]\nsubjectAltName=IP:127.0.0.1,DNS:localhost\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n"
         try contents.write(to: configuration, atomically: true, encoding: .utf8)
-        let openssl = Process(); openssl.executableURL = URL(fileURLWithPath: "/usr/bin/openssl")
-        openssl.arguments = ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key.path, "-out", certificate.path, "-days", "7", "-config", configuration.path]
-        openssl.standardOutput = FileHandle.nullDevice; openssl.standardError = FileHandle.nullDevice
-        try openssl.run()
-        defer { if openssl.isRunning { openssl.terminate(); openssl.waitUntilExit() } }
-        while openssl.isRunning { try await Task.sleep(for: .milliseconds(50)) }
-        guard openssl.terminationStatus == 0 else { stop(); throw NetworkCaptureError.startup }
-        try (Data(contentsOf: certificate) + Data(contentsOf: key)).write(to: pem, options: .atomic)
+        try await openssl(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", authorityKey.path, "-out", authority.path, "-days", "7", "-config", configuration.path, "-extensions", "root"])
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: authorityKey.path)
+        try await openssl(["req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", key.path, "-out", request.path, "-config", configuration.path])
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: key.path)
+        try await openssl(["x509", "-req", "-in", request.path, "-CA", authority.path, "-CAkey", authorityKey.path, "-CAcreateserial", "-out", certificate.path, "-days", "7", "-sha256", "-extfile", configuration.path, "-extensions", "server"])
+        try (Data(contentsOf: certificate) + Data(contentsOf: authority) + Data(contentsOf: key)).write(to: pem, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: pem.path)
         let p = Process(); p.executableURL = helper.appendingPathComponent("Contents/MacOS/mitmdump")
         p.arguments = ["--mode", "reverse:https://chatgpt.com", "--certs", "*=" + pem.path, "--quiet", "--listen-host", "127.0.0.1", "--listen-port", String(port), "--set", "confdir=" + temporary.path,
@@ -118,7 +118,7 @@ public actor NetworkCaptureSession {
         process = p
         do {
             try p.run()
-            let ca = certificate
+            let ca = authority
             let deadline = Date().addingTimeInterval(15)
             while p.isRunning, Date() < deadline {
                 try Task.checkCancellation()
@@ -132,6 +132,21 @@ public actor NetworkCaptureSession {
             }
             throw NetworkCaptureError.startup
         } catch { stop(); throw error }
+    }
+    private func openssl(_ arguments: [String]) async throws {
+        let command = Process(); command.executableURL = URL(fileURLWithPath: "/usr/bin/openssl"); command.arguments = arguments
+        command.standardOutput = FileHandle.nullDevice; command.standardError = FileHandle.nullDevice
+        try command.run()
+        defer {
+            if command.isRunning { kill(command.processIdentifier, SIGKILL); command.waitUntilExit() }
+        }
+        let deadline = Date().addingTimeInterval(20)
+        while command.isRunning {
+            try Task.checkCancellation()
+            guard Date() < deadline else { throw NetworkCaptureError.startup }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        guard command.terminationStatus == 0 else { throw NetworkCaptureError.startup }
     }
     public func stop() {
         if let p = process, p.isRunning {
