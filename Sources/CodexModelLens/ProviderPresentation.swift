@@ -44,6 +44,15 @@ struct ProviderStatusView: View {
                     Image(systemName: "arrow.up.right").font(.caption2).foregroundStyle(.tertiary)
                 }
             }
+            if let event = status?.events.first {
+                Link(destination: event.url) {
+                    HStack(spacing: 6) {
+                        Text(event.title).lineLimit(2)
+                        Spacer(minLength: 0)
+                        if let date = event.updatedAt { Text(date.formatted(.dateTime.month().day())).monospacedDigit() }
+                    }.font(.caption2).foregroundStyle(.secondary)
+                }
+            }
         }.help(status.map { "状态读取 \($0.fetchedAt.formatted(.dateTime.hour().minute()))" } ?? "状态读取中")
     }
 }

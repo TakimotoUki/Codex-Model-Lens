@@ -15,6 +15,21 @@ struct SettingsView: View {
                 Spacer()
             }
             Form {
+                Section("网络响应模型采集") {
+                    Text("直接读取当前任务响应的 model 与 OpenAI-Model，并用请求中的任务和轮次 ID 关联。需要在退出 Codex / ChatGPT 后从这里重新打开，已发生的响应无法补回。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text("此模式通过本机 HTTPS 反向代理观察该客户端的 OpenAI 响应，只保存模型、关联 ID 和时间。代理只监听本机，服务端地址和证书只传给这次启动的客户端；不改配置文件、系统证书或系统代理。第三方中转暂不覆盖。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        if !store.networkCapture.ready { Button("下载网络采集组件…") { store.networkCapture.install() } }
+                        else { Button("以网络采集模式打开 Codex") { store.networkCapture.launch(outputDirectory: store.importedDirectory) } }
+                        if store.networkCapture.isRunning { Button("停止采集") { store.networkCapture.stop() } }
+                        if store.networkCapture.busy { ProgressView().controlSize(.small) }
+                    }.disabled(store.networkCapture.busy)
+                    Text(store.networkCapture.message).font(.caption).foregroundStyle(store.networkCapture.isRunning ? .blue : .secondary)
+                    Text("组件按需下载，占用独立磁盘空间；采集时会增加内存与 CPU 开销，默认关闭。服务端若未公开真实模型名，仍会明确显示未确认。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("服务端模型采集") {
                     Text("为后续任务记录服务端报告的模型，包括未发生切换的响应。请先结束或暂停任务并自行退出 Codex / ChatGPT，再使用下方按钮打开。客户端运行期间不会自动重启。")
                         .font(.caption).foregroundStyle(.secondary)

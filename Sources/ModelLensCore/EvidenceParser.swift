@@ -107,7 +107,7 @@ struct ParsedStream {
         if type == "response.metadata" {
             parseResponse(object["response"] as? [String: Any] ?? [:], envelope: object,
                           time: time, source: source, locator: locator)
-        } else if ["response.created", "response.completed", "response.in_progress", "response.failed"].contains(type),
+        } else if ["response.created", "response.completed", "response.in_progress", "response.failed", "response.incomplete"].contains(type),
            let response = object["response"] as? [String: Any] {
             parseResponse(response, envelope: object, time: time, source: source, locator: locator)
         } else if type.isEmpty, let response = object["response"] as? [String: Any], response["object"] as? String == "response" {

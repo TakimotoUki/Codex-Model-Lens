@@ -19,7 +19,7 @@ public enum EvidenceImporter {
             guard let envelope = try? JSONSerialization.jsonObject(with: record) as? [String: Any] else { continue }
             let type = envelope["type"] as? String ?? ""
             let method = envelope["method"] as? String ?? ""
-            guard ["model/rerouted", "model/safetyBuffering/updated"].contains(method) || ["model/rerouted", "model_rerouted", "response.created", "response.completed", "response.in_progress", "response.metadata", "response.failed"].contains(type) || envelope["response"] != nil else { continue }
+            guard ["model/rerouted", "model/safetyBuffering/updated"].contains(method) || ["model/rerouted", "model_rerouted", "response.created", "response.completed", "response.in_progress", "response.metadata", "response.failed", "response.incomplete"].contains(type) || envelope["response"] != nil else { continue }
             var stream = ParsedStream()
             stream.consume(record, source: "import:\(sourceName)", locator: "import")
             guard let thread = stream.thread else { continue }

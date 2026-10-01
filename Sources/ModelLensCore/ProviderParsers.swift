@@ -61,18 +61,19 @@ enum ProviderParsers {
         value.plan = "OpenCode Go · 工作区"; value.note = "官方工作区额度；不混入本机其他账户的 Token。"
         return value
     }
-    static func antigravity(summary: [String: Any], status: [String: Any], account: String = "local") throws -> UsageSnapshot {
+    static func antigravity(summary: [String: Any], status: [String: Any], account: String = "local", legacyProtoDefaults: Bool = false) throws -> UsageSnapshot {
         let user = status["userStatus"] as? [String: Any] ?? [:]
         var value = UsageSnapshot(provider: .antigravity, accountID: account, source: "Antigravity 本机语言服务")
         // userTier is the real quota plan; planStatus can contain a legacy generic Pro template.
         value.plan = text((user["userTier"] as? [String: Any])?["name"])
-        let payload = summary["quotaSummary"] as? [String: Any] ?? summary
+        let payload = summary["response"] as? [String: Any] ?? summary["summary"] as? [String: Any] ?? summary["quotaSummary"] as? [String: Any] ?? summary
         if let groups = payload["groups"] as? [[String: Any]] {
             for (index, group) in groups.enumerated() {
                 guard let label = text(group["displayName"]), let buckets = group["buckets"] as? [[String: Any]] else { continue }
                 for (ordinal, bucket) in buckets.enumerated() {
+                    guard bucket["disabled"] as? Bool != true else { continue }
                     let remaining = bucket["remaining"] as? [String: Any] ?? [:]
-                    let fraction = number(remaining["remainingFraction"]) ?? (remaining["case"] as? String == "remainingFraction" ? number(remaining["value"]) : nil)
+                    let fraction = number(bucket["remainingFraction"]) ?? number(remaining["remainingFraction"]) ?? (remaining["case"] as? String == "remainingFraction" ? number(remaining["value"]) : nil)
                     value.meters.append(UsageMeter(id: "\(index)-\(ordinal)", title: label + " · " + (text(bucket["displayName"]) ?? "额度"),
                         remainingPercent: fraction.map { max(0, min(100, $0 * 100)) }, resetsAt: LensDate.parse(bucket["resetTime"] ?? bucket["resetAt"])))
                 }
@@ -85,12 +86,20 @@ enum ProviderParsers {
                     return family == "gemini" ? name.contains("gemini") : name.contains("claude") || name.contains("gpt")
                 }.compactMap { $0["quotaInfo"] as? [String: Any] }
                 guard !matching.isEmpty else { continue }
-                let fractions = matching.compactMap { number($0["remainingFraction"]) }
+                // GetUserStatus's legacy QuotaInfo is a proto3 float, NOT an optional
+                // or oneof field. Google's JSON encoder omits its default zero. Apply
+                // this only to the verified local protobuf endpoint, with a valid reset.
+                // Generic imports and quota-summary optional fields keep nil as unknown.
+                let fractions = matching.compactMap { quota -> Double? in
+                    if let fraction = number(quota["remainingFraction"]) { return fraction }
+                    if legacyProtoDefaults, quota["remainingFraction"] == nil, LensDate.parse(quota["resetTime"]) != nil { return 0 }
+                    return nil
+                }
                 let reset = matching.compactMap { LensDate.parse($0["resetTime"]) }.min()
                 let percent = fractions.min().map { max(0, min(100, $0 * 100)) }
                 value.meters.append(UsageMeter(id: family, title: label, remainingPercent: percent, resetsAt: reset))
             }
-            value.note = "旧版模型额度接口未标注额度周期；缺失比例保持未知。Token 统计未由此接口提供。"
+            value.note = legacyProtoDefaults ? "官方本机 protobuf 额度；省略的默认比例按 0% 解码。此接口未标注周期或提供 Token。" : "旧版模型额度接口未标注额度周期；缺失比例保持未知。Token 统计未由此接口提供。"
         } else { value.note = "额度来自语言服务；Token 统计未由此接口提供。" }
         guard !value.meters.isEmpty else { throw ProviderReadError.invalidResponse }
         return value

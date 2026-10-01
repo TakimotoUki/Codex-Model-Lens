@@ -15,3 +15,5 @@ Resources/AppIcon.iconset/
 
 Resources/AppIcon.icns
 Resources/ProviderIcons/*.png
+__pycache__/
+*.pyc

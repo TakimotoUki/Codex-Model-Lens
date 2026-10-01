@@ -14,6 +14,19 @@ struct LensCLI {
             return
         }
         let home = (argument("--home") ?? ProcessInfo.processInfo.environment["CODEX_HOME"]).map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex")
+        if args.contains("--prepare-capture"), let path = argument("--data-directory") {
+            do {
+                let session = NetworkCaptureSession(directory: URL(fileURLWithPath: path))
+                try await session.install(archive: argument("--component-archive").map { URL(fileURLWithPath: $0) })
+                print("Network component ready: \(await session.ready())")
+                if let script = argument("--network-script"), let output = argument("--output") {
+                    let environment = try await session.start(script: URL(fileURLWithPath: script), outputDirectory: URL(fileURLWithPath: path).appendingPathComponent("ImportedEvidence"))
+                    try PrivateMetadata.save(environment, to: URL(fileURLWithPath: output))
+                    try? await Task.sleep(for: .seconds(30)); await session.stop()
+                }
+            } catch { FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8)); exit(1) }
+            return
+        }
         if let name = argument("--service-status"), let provider = UsageProvider(rawValue: name) {
             let value = await ServiceStatusClient().fetch(provider)
             print("\(provider.title): \(value.condition.rawValue); \(value.detail)")
@@ -21,7 +34,7 @@ struct LensCLI {
         }
         if let name = argument("--provider"), let provider = UsageProvider(rawValue: name), provider != .codex {
             do {
-                let value = try await ProviderClient().fetch(provider)
+                let value = try await ProviderClient().fetch(provider, backgroundOnly: args.contains("--background-only"))
                 guard let output = argument("--output") else { throw ProviderReadError.invalidResponse }
                 try PrivateMetadata.save(value, to: URL(fileURLWithPath: output))
                 print("Provider metadata saved: \(provider.title); quota windows: \(value.meters.count); token data: \(value.tokens != nil)")

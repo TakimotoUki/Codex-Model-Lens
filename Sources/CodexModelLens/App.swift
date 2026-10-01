@@ -282,9 +282,15 @@ final class LensAppDelegate: NSObject, NSApplicationDelegate, UNUserNotification
         window.center(); window.makeKeyAndOrderFront(nil); utilities[page] = window
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if Self.bootstrapStore?.networkCapture.isRunning == true {
+            let alert = NSAlert(); alert.messageText = "网络采集代理仍在运行"
+            alert.informativeText = "退出 Model Lens 会停止采集代理，并中断使用该代理的 Codex 网络连接。请先退出 Codex，再退出本程序。"
+            alert.addButton(withTitle: "取消退出"); alert.addButton(withTitle: "仍然退出")
+            guard alert.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
+        }
         popover.performClose(nil)
         Self.bootstrapStore?.shutdown()
-        guard Self.bootstrapStore?.isProbing == true || Self.bootstrapStore?.usage.loading.isEmpty == false else { return .terminateNow }
+        guard Self.bootstrapStore?.networkCapture.isRunning == true || Self.bootstrapStore?.networkCapture.busy == true || Self.bootstrapStore?.isProbing == true || Self.bootstrapStore?.usage.loading.isEmpty == false else { return .terminateNow }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { NSApp.reply(toApplicationShouldTerminate: true) }
         return .terminateLater
     }

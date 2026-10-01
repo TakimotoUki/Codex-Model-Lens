@@ -45,7 +45,7 @@ private final class MetadataSessionDelegate: NSObject, URLSessionTaskDelegate, @
 
 public actor ProviderClient {
     public init() {}
-    public func fetch(_ provider: UsageProvider, credential: String? = nil, accountID: String = "local") async throws -> UsageSnapshot {
+    public func fetch(_ provider: UsageProvider, credential: String? = nil, accountID: String = "local", backgroundOnly: Bool = false) async throws -> UsageSnapshot {
         switch provider {
         case .deepseek:
             guard let key = credential ?? ProcessInfo.processInfo.environment["DEEPSEEK_API_KEY"] ?? ProcessInfo.processInfo.environment["DEEPSEEK_KEY"], !key.isEmpty else { throw ProviderReadError.missingLogin }
@@ -79,7 +79,7 @@ public actor ProviderClient {
             catch ProviderReadError.encryptedLogin {
                 return try WorkBuddyHistory.load()
             }
-        case .antigravity: return try await antigravity()
+        case .antigravity: return try await antigravity(backgroundOnly: backgroundOnly)
         case .codex: throw ProviderReadError.unsupported
         }
     }
@@ -117,52 +117,52 @@ public actor ProviderClient {
         let body: [String: Any] = enterprise ? [:] : ["PageNumber": 1, "PageSize": 100, "ProductCode": "p_tcaca", "Status": [0, 3], "OnlyValidPeriod": true]
         return try ProviderParsers.workbuddy(await request(endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + path, headers: headers, body: body), account: stableID(uid), enterprise: enterprise)
     }
-    private func antigravity() async throws -> UsageSnapshot {
+    private func antigravity(backgroundOnly: Bool) async throws -> UsageSnapshot {
         guard let app = await AgentDiscovery.app("com.google.antigravity", names: ["Antigravity", "Antigravity IDE"]) else { throw ProviderReadError.unavailable }
-        var code: SecStaticCode?, requirement: SecRequirement?
-        guard SecStaticCodeCreateWithPath(app as CFURL, [], &code) == errSecSuccess, let code,
-              SecRequirementCreateWithString("anchor apple generic and certificate leaf[subject.OU] = \"EQHXZ8M8AV\" and identifier \"com.google.antigravity\"" as CFString, [], &requirement) == errSecSuccess,
-              SecStaticCodeCheckValidity(code, [], requirement) == errSecSuccess else { throw ProviderReadError.unsupported }
-        let running = await MainActor.run { NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.google.antigravity" } }
-        if !running {
-            await MainActor.run {
-                let configuration = NSWorkspace.OpenConfiguration(); configuration.activates = false; configuration.hides = true
-                NSWorkspace.shared.openApplication(at: app, configuration: configuration) { _, _ in }
-            }
-            for _ in 0..<40 {
-                try await Task.sleep(for: .milliseconds(250))
-                let processes = try await command("/bin/ps", ["-U", String(getuid()), "-o", "command="])
-                if processes.contains(app.path + "/Contents/") && processes.contains("language_server") { break }
-            }
-        }
-        let listing = try await command("/bin/ps", ["-U", String(getuid()), "-o", "pid=,command="])
+        try AntigravityBackgroundSession.verify(app, identifier: "com.google.antigravity")
+        let listing = backgroundOnly ? "" : try await command("/bin/ps", ["-U", String(getuid()), "-o", "pid=,command="])
         for line in listing.split(separator: "\n") {
             guard line.contains("language_server"), let pid = Int32(line.trimmingCharacters(in: .whitespaces).split(separator: " ").first ?? ""),
                   let token = capture(#"--csrf_token(?:=|\s+)([^\s]+)"#, String(line)) else { continue }
             var path = [CChar](repeating: 0, count: 4096)
             guard proc_pidpath(pid, &path, UInt32(path.count)) > 0 else { continue }
-            let binary = URL(fileURLWithPath: String(decoding: path.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)).resolvingSymlinksInPath().path
-            guard binary.hasPrefix(app.resolvingSymlinksInPath().path + "/Contents/"), binary.contains("language_server") else { continue }
-            let sockets = try await command("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", String(pid)])
-            let regex = try NSRegularExpression(pattern: #":(\d+)\s+\(LISTEN\)"#)
-            let ports = Set(regex.matches(in: sockets, range: NSRange(sockets.startIndex..., in: sockets)).compactMap { Range($0.range(at: 1), in: sockets).flatMap { Int(sockets[$0]) } })
-            for port in ports.sorted() {
-                for scheme in ["https", "http"] {
-                    let base = "\(scheme)://127.0.0.1:\(port)/exa.language_server_pb.LanguageServerService/"
-                    let headers = ["X-Codeium-Csrf-Token": token, "Connect-Protocol-Version": "1"]
-                    let summary = (try? await request(base + "RetrieveUserQuotaSummary", headers: headers, body: ["forceRefresh": true], localPort: port)) ?? [:]
-                    let status = (try? await request(base + "GetUserStatus", headers: headers, body: ["metadata": ["ideName": "antigravity", "extensionName": "antigravity", "ideVersion": "unknown", "locale": "en"]], localPort: port)) ?? [:]
-                    if var value = try? ProviderParsers.antigravity(summary: summary, status: status) {
-                        let user = status["userStatus"] as? [String: Any]
-                        let identity = user?["email"] as? String ?? user?["userId"] as? String
-                        value.accountID = identity.map(stableID) ?? "local-antigravity"
-                        return value
-                    }
-                    try Task.checkCancellation()
+            let binary = URL(fileURLWithPath: String(decoding: path.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)).resolvingSymlinksInPath()
+            guard binary.path.hasPrefix(app.resolvingSymlinksInPath().path + "/Contents/"), binary.lastPathComponent.contains("language_server") else { continue }
+            if let value = try await antigravityQuota(pid: pid, token: token, source: "Antigravity 本机语言服务") { return value }
+        }
+        // Never opens the desktop app. The same signed helper can authenticate and
+        // query quotas without a window, in an empty private data directory.
+        let background = AntigravityBackgroundSession()
+        try background.start(app: app)
+        defer { background.stop() }
+        let deadline = Date().addingTimeInterval(20)
+        while background.isRunning, Date() < deadline {
+            try Task.checkCancellation()
+            if let value = try await antigravityQuota(pid: background.pid, token: background.csrf, source: "Antigravity 官方后台查询") { return value }
+            try await Task.sleep(for: .milliseconds(500))
+        }
+        throw ProviderReadError.unavailable
+    }
+    private func antigravityQuota(pid: Int32, token: String, source: String) async throws -> UsageSnapshot? {
+        guard let sockets = try? await command("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", String(pid)]) else { return nil }
+        let regex = try NSRegularExpression(pattern: #":(\d+)\s+\(LISTEN\)"#)
+        let ports = Set(regex.matches(in: sockets, range: NSRange(sockets.startIndex..., in: sockets)).compactMap { Range($0.range(at: 1), in: sockets).flatMap { Int(sockets[$0]) } })
+        for port in ports.sorted().prefix(4) {
+            for scheme in ["https", "http"] {
+                try Task.checkCancellation()
+                let base = "\(scheme)://127.0.0.1:\(port)/exa.language_server_pb.LanguageServerService/"
+                let headers = ["X-Codeium-Csrf-Token": token, "Connect-Protocol-Version": "1"]
+                let summary = (try? await request(base + "RetrieveUserQuotaSummary", headers: headers, body: ["forceRefresh": true], localPort: port)) ?? [:]
+                let status = (try? await request(base + "GetUserStatus", headers: headers, body: [:], localPort: port)) ?? [:]
+                if var value = try? ProviderParsers.antigravity(summary: summary, status: status, legacyProtoDefaults: true) {
+                    let user = status["userStatus"] as? [String: Any]
+                    let identity = user?["email"] as? String ?? user?["userId"] as? String
+                    value.accountID = identity.map(stableID) ?? "local-antigravity"; value.source = source
+                    return value
                 }
             }
         }
-        throw ProviderReadError.unavailable
+        return nil
     }
     private func request(_ value: String, headers: [String: String], body: [String: Any]? = nil, localPort: Int? = nil) async throws -> [String: Any] {
         guard let url = URL(string: value) else { throw ProviderReadError.invalidResponse }

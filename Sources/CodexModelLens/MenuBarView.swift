@@ -139,7 +139,7 @@ struct UsageSnapshotView: View {
                 if let plan = snapshot.plan { Text(plan).font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
                 ForEach(snapshot.meters.prefix(6)) { meter in
                     VStack(alignment: .leading, spacing: 5) {
-                        HStack { Text(meter.title); Spacer(); Text(meter.remainingPercent.map { String(format: "剩余 %.0f%%", $0) } ?? "剩余未知").monospacedDigit() }.font(.caption)
+                        HStack { Text(meter.title); Spacer(); Text(meter.remainingPercent.map { ($0 > 0 && $0 < 1 ? String(format: "剩余 %.2f%%", $0) : String(format: "剩余 %.0f%%", $0)) } ?? "剩余未知").monospacedDigit() }.font(.caption)
                         if let left = meter.remainingPercent { ProgressView(value: left, total: 100).tint(left < 15 ? .orange : .blue) }
                         if let reset = meter.resetsAt {
                             HStack {
@@ -163,7 +163,7 @@ struct UsageSnapshotView: View {
                 }
                 if snapshot.provider == .codex {
                     HStack {
-                        Label("重置卡", systemImage: "arrow.counterclockwise.circle")
+                        Text("重置卡")
                         Spacer()
                         Text(snapshot.availableResetCards.map { "\($0) 张可用" } ?? "暂未提供")
                     }.font(.callout.weight(.medium))

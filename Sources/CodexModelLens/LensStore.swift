@@ -72,6 +72,7 @@ final class LensStore {
     var mainWindowVisible = false
     let usage: UsageHub
     let pomodoro: PomodoroController
+    let networkCapture: NetworkCaptureController
     private let officialClient = OfficialCodexClient()
     private var probeTask: Task<Void, Never>?
     private var canSaveProbes = true
@@ -133,6 +134,7 @@ final class LensStore {
     init(dataDirectory: URL, legacyDirectory: URL? = nil) {
         self.dataDirectory = dataDirectory
         self.legacyDirectory = legacyDirectory
+        networkCapture = NetworkCaptureController(directory: dataDirectory)
         pomodoro = PomodoroController(directory: dataDirectory)
         usage = UsageHub(directory: dataDirectory)
         if let data = try? Data(contentsOf: dataDirectory.appendingPathComponent("model-probes.json")) {
@@ -323,7 +325,7 @@ final class LensStore {
         }
     }
     func cancelProbe() { probeTask?.cancel() }
-    func shutdown() { usage.shutdown(); probeTask?.cancel(); monitorTask?.cancel(); desktopMonitor?.stop(); liveSaveTask?.cancel() }
+    func shutdown() { networkCapture.shutdown(); usage.shutdown(); probeTask?.cancel(); monitorTask?.cancel(); desktopMonitor?.stop(); liveSaveTask?.cancel() }
     private func updateDesktopMonitor() {
         let active = archive.threads.filter { $0.isRunning || $0.isUnconfirmed }.prefix(24).map(\.id)
         let recent = latestScan.threads.prefix(12).map(\.id)

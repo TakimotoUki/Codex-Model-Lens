@@ -138,6 +138,30 @@ struct ScannerTests {
         #expect(!result.diagnostics.isEmpty)
     }
 
+    @Test func networkMetadataKeepsConcurrentTasksAndNewTurnsSeparate() async throws {
+        let directory = try fixtureDirectory(); defer { try? FileManager.default.removeItem(at: directory) }
+        let imports = directory.appendingPathComponent("ImportedEvidence"), file = imports.appendingPathComponent("network-models.jsonl")
+        let now = Date()
+        try writeLines(lines(id: "a", turnID: "a1", date: now), to: directory.appendingPathComponent("sessions/a.jsonl"))
+        try writeLines(lines(id: "b", turnID: "b1", date: now), to: directory.appendingPathComponent("sessions/b.jsonl"))
+        try writeLines([
+            ["type": "response.created", "timestamp": now.timeIntervalSince1970, "thread_id": "a", "turn_id": "a1", "response": ["id": "resp_a", "model": "gpt-5.6-luna"]],
+            ["type": "response.incomplete", "timestamp": now.timeIntervalSince1970, "thread_id": "b", "turn_id": "b1", "response": ["id": "resp_b", "model": "gpt-6-astra"]]
+        ], to: file)
+        let scanner = CodexScanner(configuration: ScannerConfiguration(codexHome: directory, importedEvidence: imports))
+        let result = await scanner.scan(now: now)
+        #expect(result.threads.first(where: { $0.id == "a" })?.latestTurn?.reportedModel == "gpt-5.6-luna")
+        #expect(result.threads.first(where: { $0.id == "b" })?.latestTurn?.reportedModel == "gpt-6-astra")
+        #expect(result.threads.first(where: { $0.id == "a" })?.hasModelDifference == true)
+        let next = [["type": "event_msg", "payload": ["type": "task_complete", "turn_id": "a1"]] as [String: Any]]
+            + Array(lines(id: "a", turnID: "a2", date: now.addingTimeInterval(1)).dropFirst())
+        let handle = try FileHandle(forWritingTo: directory.appendingPathComponent("sessions/a.jsonl"))
+        try handle.seekToEnd()
+        for line in next { try handle.write(contentsOf: JSONSerialization.data(withJSONObject: line)); try handle.write(contentsOf: Data([10])) }
+        try handle.close()
+        #expect(await scanner.scan(now: now.addingTimeInterval(1)).threads.first(where: { $0.id == "a" })?.latestTurn?.reportedModel == nil)
+    }
+
     @Test func scannerIncludesCumulativeTokenEvents() async throws {
         let directory = try fixtureDirectory(); defer { try? FileManager.default.removeItem(at: directory) }
         var values = lines(id: "a", turnID: "a1", date: Date())

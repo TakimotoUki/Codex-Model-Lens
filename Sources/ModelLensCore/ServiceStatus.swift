@@ -5,8 +5,9 @@ public struct ServiceStatus: Sendable, Equatable {
     public var condition: ServiceCondition
     public var detail: String
     public var fetchedAt: Date
-    public init(condition: ServiceCondition, detail: String, fetchedAt: Date = Date()) {
-        self.condition = condition; self.detail = detail; self.fetchedAt = fetchedAt
+    public var events: [ServiceEvent]
+    public init(condition: ServiceCondition, detail: String, fetchedAt: Date = Date(), events: [ServiceEvent] = []) {
+        self.condition = condition; self.detail = detail; self.fetchedAt = fetchedAt; self.events = events
     }
 }
 
@@ -97,14 +98,25 @@ private final class StatusSessionDelegate: NSObject, URLSessionTaskDelegate, @un
 public actor ServiceStatusClient {
     public init() {}
     public func fetch(_ provider: UsageProvider) async -> ServiceStatus {
-        let endpoint: String
+        let feed: String
         switch provider {
-        case .codex: endpoint = "https://status.openai.com/proxy/status.openai.com"
-        case .deepseek: endpoint = "https://status.deepseek.com/api/v2/summary.json"
-        case .antigravity: endpoint = "https://status.cloud.google.com/incidents.json"
-        case .opencodego, .workbuddy:
-            return ServiceStatus(condition: .unknown, detail: "暂未提供独立的官方状态数据")
+        case .codex: feed = "https://status.openai.com/feed.rss"
+        case .deepseek: feed = "https://status.deepseek.com/feed.rss"
+        case .antigravity: feed = "https://status.cloud.google.com/en/feed.atom"
+        case .opencodego, .workbuddy: return ServiceStatus(condition: .unknown, detail: "暂未提供独立的官方状态数据")
         }
+        async let subscription = read(feed, accept: "application/rss+xml, application/atom+xml, application/xml")
+        var status: ServiceStatus?
+        if provider == .codex, let data = await read("https://status.openai.com/proxy/status.openai.com", accept: "application/json") {
+            status = try? ServiceStatusParser.parse(data, provider: provider)
+        }
+        if let data = await subscription, let parsed = try? StatusFeedParser.parse(data, provider: provider) {
+            if var status { status.events = parsed.events; return status }
+            return parsed
+        }
+        return status ?? ServiceStatus(condition: .unknown, detail: "官方状态读取失败 · 点击查看网站")
+    }
+    private func read(_ endpoint: String, accept: String) async -> Data? {
         let config = URLSessionConfiguration.ephemeral
         config.urlCache = nil; config.httpCookieStorage = nil; config.urlCredentialStorage = nil
         config.timeoutIntervalForRequest = 10; config.timeoutIntervalForResource = 15
@@ -112,19 +124,14 @@ public actor ServiceStatusClient {
         defer { session.invalidateAndCancel() }
         do {
             var request = URLRequest(url: URL(string: endpoint)!)
-            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue(accept, forHTTPHeaderField: "Accept")
             let (bytes, response) = try await session.bytes(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  http.expectedContentLength <= 2 * 1024 * 1024 else { throw ProviderReadError.invalidResponse }
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200, http.expectedContentLength <= 2 * 1024 * 1024 else { return nil }
             var data = Data(); data.reserveCapacity(64 * 1024)
             for try await byte in bytes {
-                guard data.count < 2 * 1024 * 1024 else { throw ProviderReadError.tooLarge }
-                data.append(byte)
+                guard data.count < 2 * 1024 * 1024 else { return nil }; data.append(byte)
             }
-            try Task.checkCancellation()
-            return try ServiceStatusParser.parse(data, provider: provider)
-        } catch {
-            return ServiceStatus(condition: .unknown, detail: "官方状态读取失败 · 点击查看网站")
-        }
+            try Task.checkCancellation(); return data
+        } catch { return nil }
     }
 }
