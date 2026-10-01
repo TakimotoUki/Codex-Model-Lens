@@ -18,11 +18,11 @@ struct MenuBarView: View {
                 Label("Model Lens", systemImage: "viewfinder").font(.headline)
                 Spacer()
                 if page == .usage {
-                    if hub.loading.contains(hub.currentID) { ProgressView().controlSize(.mini) }
+                    if !hub.loading.isEmpty || store.isScanning { ProgressView().controlSize(.mini) }
                     Button {
-                        if hub.provider == .codex { Task { await store.refresh() } }
-                        refresh(force: true)
-                    } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.borderless).help("刷新当前用量")
+                        Task { await store.refresh() }
+                        hub.refreshAll(codexHome: URL(fileURLWithPath: store.settings.codexHome))
+                    } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.borderless).help("刷新任务、所有已启用平台用量和服务状态")
                 }
             }.padding(16)
             Picker("功能", selection: $page) {
@@ -40,22 +40,9 @@ struct MenuBarView: View {
                         accountPicker
                         if hub.provider == .codex {
                             runningTasks
-                            if let report = store.probeReports.first {
-                                HStack(alignment: .top) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("最近独立核验").font(.caption.weight(.medium))
-                                        Text(report.isConfirmed ? report.deliveredModels.joined(separator: "、") : report.label)
-                                            .font(.caption.monospaced()).foregroundStyle(report.isConfirmed ? .blue : .secondary)
-                                        Text("\(report.testedAt.formatted(.dateTime.month().day().hour().minute())) · 仅属于该测试")
-                                            .font(.caption2).foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    Button("查看") { delegate.showMainWindow(); store.showingProbe = true }.buttonStyle(.link).font(.caption)
-                                }
-                                Divider()
-                            }
                         }
                         UsageSnapshotView(snapshot: hub.current, loading: hub.loading.contains(hub.currentID), error: hub.errors[hub.currentID])
+                        ProviderStatusView(provider: hub.provider, status: hub.serviceStatuses[hub.provider])
                     }
                 }.padding(16).fixedSize(horizontal: false, vertical: true)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { usageHeight = $0 }
@@ -66,14 +53,12 @@ struct MenuBarView: View {
                 Button("打开主界面") { delegate.showMainWindow() }.buttonStyle(.glass)
                 Spacer()
                 Menu {
-                    Button("Usage Dashboard…") { delegate.showUtility(.dashboard) }
-                    Button("Cost…") { delegate.showUtility(.cost) }
-                    Button("Add Account…") { delegate.showUtility(.account) }
-                    Button("Status Page…") { delegate.showUtility(.status) }
+                    Button("用量概览…") { delegate.showUtility(.dashboard) }
+                    Button("添加账户…") { delegate.showUtility(.account) }
                     Divider()
                     Button("独立模型核验…") { delegate.showMainWindow(); store.showingProbe = true }
                     Button("设置…") { delegate.showUtility(.settings) }
-                    Button("About Model Lens…") { delegate.showUtility(.about) }
+                    Button("关于 Model Lens…") { delegate.showUtility(.about) }
                     Divider(); Button("退出") { NSApp.terminate(nil) }
                 } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).fixedSize()
             }.padding(13)
@@ -88,7 +73,7 @@ struct MenuBarView: View {
         HStack(spacing: 5) {
             ForEach(hub.enabledProviders) { provider in
                 Button { hub.provider = provider } label: {
-                    Image(systemName: provider.symbol).frame(maxWidth: .infinity).padding(.vertical, 7)
+                    ProviderIcon(provider: provider).frame(maxWidth: .infinity).padding(.vertical, 7)
                         .foregroundStyle(hub.provider == provider ? Color.blue : .secondary)
                         .background(hub.provider == provider ? Color.blue.opacity(0.12) : .clear, in: .rect(cornerRadius: 9))
                 }.buttonStyle(.plain).help(provider.title).accessibilityLabel(provider.title)
@@ -164,11 +149,27 @@ struct UsageSnapshotView: View {
                         }
                     }
                 }
-                if snapshot.meters.count > 6 { Text("其他额度见 Usage Dashboard").font(.caption2).foregroundStyle(.secondary) }
+                if snapshot.meters.count > 6 { Text("其他额度见 用量概览").font(.caption2).foregroundStyle(.secondary) }
                 if let balance = snapshot.balance {
-                    HStack { Text(snapshot.currency == "积分" ? "剩余积分" : "余额"); Spacer(); Text(balance, format: .number.precision(.fractionLength(0...2))); Text(snapshot.currency ?? "") }.font(.callout.weight(.medium))
+                    HStack {
+                        Text(snapshot.currency == "积分" ? "剩余积分" : snapshot.currency == "购买额度" ? "购买额度" : "余额")
+                        Spacer()
+                        Text(balance, format: .number.precision(.fractionLength(0...2)))
+                        if snapshot.currency != "购买额度" { Text(snapshot.currency ?? "") }
+                    }.font(.callout.weight(.medium))
                     if let paid = snapshot.paidBalance, let granted = snapshot.grantedBalance {
                         Text(String(format: "充值 %.2f · 赠送 %.2f", paid, granted)).font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                if snapshot.provider == .codex {
+                    HStack {
+                        Label("重置卡", systemImage: "arrow.counterclockwise.circle")
+                        Spacer()
+                        Text(snapshot.availableResetCards.map { "\($0) 张可用" } ?? "暂未提供")
+                    }.font(.callout.weight(.medium))
+                    if let expiry = snapshot.resetCardExpiresAt {
+                        Text("最近一张到期 \(expiry.formatted(.dateTime.month().day().hour().minute()))")
+                            .font(.caption2).foregroundStyle(.secondary)
                     }
                 }
                 HStack {
@@ -176,7 +177,6 @@ struct UsageSnapshotView: View {
                     Spacer(); metric("累计 Token", snapshot.tokens)
                 }
                 if let credits = snapshot.spentCredits { Text(String(format: "本机已记录消耗 · %.2f 积分", credits)).font(.callout.weight(.medium)) }
-                if let cost = snapshot.recordedCost { Text(String(format: "本机记录 Cost · $%.4f", cost)).font(.caption) }
                 if let note = snapshot.note { Text(note).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
                 HStack {
                     Text("更新 \(snapshot.fetchedAt.formatted(.dateTime.hour().minute()))")

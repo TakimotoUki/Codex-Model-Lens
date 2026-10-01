@@ -94,9 +94,13 @@ struct TaskDetailView: View {
                 Text("本机 token_count 记录，包含该任务先前轮次；不等于账户计费或剩余额度。").font(.caption2).foregroundStyle(.secondary)
             }
             Text(turn.reportedModel == nil
-                 ? "尚未取得明确路由或响应模型字段，实际交付模型保持未确认。"
+                 ? "本轮尚未留下服务端模型记录。实时路由监听与服务端日志采集可用于后续响应。"
                  : "服务端字段是可观察到的模型报告；本地日志和导入文件未经独立认证，无法证明底层模型权重。")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if turn.reportedModel == nil {
+                Button("设置模型采集…") { store.showingSettings = true }
+                    .buttonStyle(.link).font(.caption)
+            }
         }
     }
 

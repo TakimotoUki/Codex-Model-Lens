@@ -34,6 +34,10 @@ struct DiagnosticsView: View {
                                 sourceRow(source)
                                 if index + 1 < (store.latestScan.sources?.count ?? 0) { Divider().padding(.leading, 42) }
                             }
+                            Divider().padding(.leading, 42)
+                            sourceRow(ScanSourceStatus(id: "desktop-ipc", title: "桌面实时模型事件", path: "本机 Unix 通信接口",
+                                state: store.desktopStatus.connected ? .available : store.settings.liveModelEvents ? .missing : .disabled,
+                                detail: "\(store.desktopStatus.message) · \(store.desktopStatus.snapshots) 个状态快照"))
                             if store.latestScan.sources?.isEmpty ?? true {
                                 Text(store.isScanning ? "正在读取数据源…" : "尚未完成首次扫描")
                                     .font(.caption).foregroundStyle(.secondary).padding(14)
@@ -55,7 +59,7 @@ struct DiagnosticsView: View {
                     DisclosureGroup("如何判断模型", isExpanded: $showExplanation) {
                         VStack(alignment: .leading, spacing: 12) {
                             explanation("轮次模型", "该轮客户端请求的模型", "slider.horizontal.3")
-                            explanation("服务端模型", "原始响应的 model、模型响应头或明确路由事件", "arrow.down.doc")
+                            explanation("服务端模型", "响应 model、模型响应头、核心 ServerModel 日志或桌面实时路由事件", "arrow.down.doc")
                             explanation("安全缓冲", "缓冲状态与可重试模型，不能单独确认交付模型", "hourglass")
                             Text("运行状态依据本机活动判断。其他设备、未保存的事件和没有模型字段的响应无法从历史中恢复。")
                                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

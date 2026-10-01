@@ -33,7 +33,7 @@ enum ProviderParsers {
         var value = UsageSnapshot(provider: .deepseek, accountID: account, source: "DeepSeek 官方余额 API")
         value.balance = total; value.currency = currency
         value.paidBalance = number(balance["topped_up_balance"]); value.grantedBalance = number(balance["granted_balance"])
-        value.note = root["is_available"] as? Bool == false ? "余额当前不可用于 API 调用" : "API Key 提供余额；Token 与实际 Cost 需要平台账户用量报告。"
+        value.note = root["is_available"] as? Bool == false ? "余额当前不可用于 API 调用" : "API Key 提供余额；Token 需要平台账户用量报告。"
         return value
     }
     static func opencode(_ root: [String: Any], account: String, now: Date = Date()) throws -> UsageSnapshot {
@@ -58,7 +58,7 @@ enum ProviderParsers {
         }
         if let balance = number(billing["balanceMicroCents"]) { value.balance = balance / 100_000_000; value.currency = "USD" }
         guard !value.meters.isEmpty || value.balance != nil else { throw ProviderReadError.invalidResponse }
-        value.plan = "OpenCode Go · 工作区"; value.note = "官方工作区额度；不混入本机其他账户的 Token 或 Cost。"
+        value.plan = "OpenCode Go · 工作区"; value.note = "官方工作区额度；不混入本机其他账户的 Token。"
         return value
     }
     static func antigravity(summary: [String: Any], status: [String: Any], account: String = "local") throws -> UsageSnapshot {

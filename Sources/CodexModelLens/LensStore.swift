@@ -33,18 +33,32 @@ struct LensSettings: Codable, Sendable {
     var scanDesktopLogs = true
     var refreshSeconds = 10.0
     var showInternal = false
+    var liveModelEvents = true
+
+    private enum CodingKeys: String, CodingKey { case codexHome, desktopLogs, scanDesktopLogs, refreshSeconds, showInternal, liveModelEvents }
+    init() {}
+    init(from decoder: any Decoder) throws {
+        self.init()
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        codexHome = try values.decodeIfPresent(String.self, forKey: .codexHome) ?? codexHome
+        desktopLogs = try values.decodeIfPresent(String.self, forKey: .desktopLogs) ?? desktopLogs
+        scanDesktopLogs = try values.decodeIfPresent(Bool.self, forKey: .scanDesktopLogs) ?? scanDesktopLogs
+        refreshSeconds = try values.decodeIfPresent(Double.self, forKey: .refreshSeconds) ?? refreshSeconds
+        showInternal = try values.decodeIfPresent(Bool.self, forKey: .showInternal) ?? showInternal
+        liveModelEvents = try values.decodeIfPresent(Bool.self, forKey: .liveModelEvents) ?? liveModelEvents
+    }
 }
 
 @MainActor @Observable
 final class LensStore {
     var settings = LensSettings()
     var filter: TaskFilter = .running
-    var selection: String?
+    var selection: String? { didSet { updateDesktopMonitor() } }
     var search = ""
     var archive = HistoryArchive()
     var latestScan = ScanResult()
     var isScanning = false
-    var monitoring = true
+    var monitoring = true { didSet { updateDesktopMonitor() } }
     var storageError: String?
     var notice: String?
     var showingSettings = false
@@ -70,6 +84,11 @@ final class LensStore {
     private var monitorTask: Task<Void, Never>?
     private var canSaveHistory = true
     private var scanGeneration = 0
+    var desktopStatus = DesktopMonitorStatus()
+    var captureError: String?
+    private var desktopMonitor: DesktopModelMonitor?
+    private var liveEvidenceDirty = false
+    private var liveSaveTask: Task<Void, Never>?
 
     var historyURL: URL { dataDirectory.appendingPathComponent("model-history.json") }
     var importedDirectory: URL { dataDirectory.appendingPathComponent("ImportedEvidence") }
@@ -184,6 +203,9 @@ final class LensStore {
             guard let self else { return }
             if CommandLine.arguments.contains("--demo") { self.installDemo(); return }
             await self.loadInitialState()
+            self.desktopMonitor = DesktopModelMonitor { [weak self] records, status in
+                Task { @MainActor [weak self] in self?.receiveDesktopEvidence(records, status: status) }
+            }
             while !Task.isCancelled {
                 if self.monitoring { await self.refresh() }
                 let clientOpen = NSWorkspace.shared.runningApplications.contains { ["com.openai.codex", "com.openai.chat"].contains($0.bundleIdentifier ?? "") }
@@ -205,9 +227,11 @@ final class LensStore {
         guard generation == scanGeneration else { return }
         latestScan = result
         archive = HistoryStore.merge(result, into: archive)
+        updateDesktopMonitor()
         if !visibleThreads.contains(where: { $0.id == selection }) { selection = visibleThreads.first?.id }
         let signature = result.threads.map { [$0.id, $0.title, $0.selectedModel ?? "", String($0.updatedAt.timeIntervalSince1970), $0.statusLabel, String($0.turns.count), $0.displayModel].joined(separator: "|") }.joined(separator: "\n") + "#\(archive.requestRecords.count)#\(evidenceCount)"
-        if canSaveHistory && (signature != lastSavedSignature || result.bytesRead > 0) {
+        if canSaveHistory && (liveEvidenceDirty || signature != lastSavedSignature || result.bytesRead > 0) {
+            liveEvidenceDirty = false
             let snapshot = archive, destination = historyURL
             do {
                 try await Task.detached(priority: .utility) { try HistoryStore.save(snapshot, to: destination) }.value
@@ -225,6 +249,7 @@ final class LensStore {
                 codexHome: URL(fileURLWithPath: settings.codexHome),
                 desktopLogs: settings.scanDesktopLogs ? URL(fileURLWithPath: settings.desktopLogs) : nil,
                 importedEvidence: importedDirectory))
+            updateDesktopMonitor()
         } catch { storageError = "设置保存失败：\(error.localizedDescription)" }
     }
 
@@ -298,7 +323,37 @@ final class LensStore {
         }
     }
     func cancelProbe() { probeTask?.cancel() }
-    func shutdown() { usage.shutdown(); probeTask?.cancel(); monitorTask?.cancel() }
+    func shutdown() { usage.shutdown(); probeTask?.cancel(); monitorTask?.cancel(); desktopMonitor?.stop(); liveSaveTask?.cancel() }
+    private func updateDesktopMonitor() {
+        let active = archive.threads.filter { $0.isRunning || $0.isUnconfirmed }.prefix(24).map(\.id)
+        let recent = latestScan.threads.prefix(12).map(\.id)
+        let ids = Set(active + recent + (selection.map { [$0] } ?? [])).subtracting(archive.removedThreadIDs ?? [])
+        desktopMonitor?.update(home: URL(fileURLWithPath: settings.codexHome), threads: ids,
+            enabled: monitoring && settings.liveModelEvents)
+    }
+    private func receiveDesktopEvidence(_ records: [ThreadRecord], status: DesktopMonitorStatus) {
+        desktopStatus = status
+        guard !records.isEmpty else { return }
+        archive = HistoryStore.addingEvidence(records, to: archive)
+        liveEvidenceDirty = true
+        guard liveSaveTask == nil else { return }
+        liveSaveTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.liveSaveTask = nil }
+            do {
+                try await Task.sleep(for: .seconds(1))
+                while self.isScanning { try await Task.sleep(for: .milliseconds(250)) }
+                await self.refresh()
+            } catch { return }
+        }
+    }
+    func launchModelCapture(detailed: Bool = false) {
+        captureError = nil
+        Task {
+            do { try await ModelCaptureLauncher.launch(detailed: detailed); notice = "已以模型采集模式打开客户端；带明确任务和轮次关联的服务端模型字段将自动保存。" }
+            catch { captureError = error.localizedDescription }
+        }
+    }
     func copyProbe(_ report: ModelProbeReport) {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]; encoder.dateEncodingStrategy = .iso8601
         if let data = try? encoder.encode(report) { copy(String(decoding: data, as: UTF8.self)) }

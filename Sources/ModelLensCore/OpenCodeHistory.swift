@@ -11,9 +11,9 @@ public enum OpenCodeHistory {
         guard try database.columns("message").isSuperset(of: ["id", "data", "time_created"]),
               try database.columns("part").isSuperset(of: ["message_id", "data"]) else { throw ProviderReadError.unsupported }
         let since = Int64(now.addingTimeInterval(-90 * 86400).timeIntervalSince1970 * 1000)
-        var days: [String: (cost: Double, tokens: Int64?)] = [:]
-        var incompleteCost = false
-        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"; formatter.locale = Locale(identifier: "en_US_POSIX")
+        var days: [String: Int64] = [:]
+        var unknownDays: Set<String> = []
+        let formatter = DateFormatter(); formatter.timeZone = TimeZone(secondsFromGMT: 0); formatter.dateFormat = "yyyy-MM-dd"; formatter.locale = Locale(identifier: "en_US_POSIX")
         let sql = """
             WITH eligible AS (
                 SELECT id, data, time_created FROM message
@@ -37,26 +37,22 @@ public enum OpenCodeHistory {
                   let record = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
                   let milliseconds = row["time_created"].flatMap(Double.init), milliseconds.isFinite else { return }
             let day = formatter.string(from: Date(timeIntervalSince1970: milliseconds / 1000))
-            var bucket = days[day] ?? (0, 0)
-            if let cost = ProviderParsers.number(record["cost"]), cost >= 0, (bucket.cost + cost).isFinite { bucket.cost += cost }
-            else { incompleteCost = true }
+            let previous = days[day] ?? 0
             let tokens = parseTokens(record["tokens"] as? [String: Any])
-            if let old = bucket.tokens, let tokens {
-                let sum = old.addingReportingOverflow(tokens); bucket.tokens = sum.overflow ? nil : sum.partialValue
-            } else { bucket.tokens = nil }
-            days[day] = bucket
+            if let tokens {
+                let sum = previous.addingReportingOverflow(tokens)
+                if sum.overflow { unknownDays.insert(day) } else { days[day] = sum.partialValue }
+            } else { unknownDays.insert(day); days[day] = previous }
         }
         guard !days.isEmpty else { throw ProviderReadError.invalidResponse }
         var value = UsageSnapshot(provider: .opencodego, accountID: "device-local", source: "本机 OpenCode SQLite · 最近 90 天")
-        value.dailyCosts = days.sorted { $0.key < $1.key }.map { DailyCost(day: $0.key, amount: $0.value.cost, tokens: $0.value.tokens) }
-        value.recordedCost = value.dailyCosts.reduce(0) { $0 + $1.amount }
-        value.currency = "USD"
-        value.tokens = value.dailyCosts.reduce(Int64?(0)) { accumulator, row in
-            guard let accumulator, let tokens = row.tokens else { return nil }
+        value.tokens = unknownDays.isEmpty ? days.values.reduce(Int64?(0)) { accumulator, tokens in
+            guard let accumulator else { return nil }
             let sum = accumulator.addingReportingOverflow(tokens); return sum.overflow ? nil : sum.partialValue
-        }
-        value.todayTokens = days[formatter.string(from: now)]?.tokens
-        value.note = "Token 与 Cost 是本机 opencode-go 记录，覆盖最近 90 天，不代表账户全量账单。" + (incompleteCost ? "部分费用字段缺失，仅汇总有费用的记录。" : "")
+        } : nil
+        let today = formatter.string(from: now)
+        value.todayTokens = unknownDays.contains(today) ? nil : days[today]
+        value.note = "Token 为本机 opencode-go 最近 90 天记录，不代表账户全量用量。"
         return value
     }
     static func parseTokens(_ tokens: [String: Any]?) -> Int64? {

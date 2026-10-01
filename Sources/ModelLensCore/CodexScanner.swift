@@ -222,6 +222,19 @@ public actor CodexScanner {
             }
             result.logCoverage = cachedLogCoverage
             let fields = ["id", "ts", "ts_nanos", "target", "thread_id", "process_uuid", "feedback_log_body"].filter { columns.contains($0) }.joined(separator: ",")
+            let modelSQL = """
+                SELECT \(fields) FROM logs WHERE id > \(lastLogID) AND id <= \(maxID)
+                AND target IN ('codex_core::session','codex_core::codex')
+                AND feedback_log_body LIKE '%server reported model %' ORDER BY id
+                """
+            for row in try db.query(modelSQL) {
+                guard let body = row["feedback_log_body"], let target = row["target"], let date = numericDate(row["ts"]) else { continue }
+                let precise = date.addingTimeInterval((Double(row["ts_nanos"] ?? "0") ?? 0) / 1_000_000_000)
+                if let thread = ServerModelLogParser.parse(body: body, target: target, threadID: row["thread_id"],
+                    timestamp: precise, source: url.path, locator: "row:\(row["id"] ?? "?")") {
+                    merge(thread, into: &externalEvidence, preferMetadata: false)
+                }
+            }
             let transportSQL = """
                 SELECT \(fields) FROM logs WHERE id > \(lastLogID) AND id <= \(maxID)
                 AND (target = 'codex_http_client::client' OR target IN ('codex_api::sse','codex_api::endpoint::responses','codex_core::stream_events_utils'))

@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
 public enum EvidenceKind: String, Codable, Sendable {
-    case threadSetting, turnContext, runtimeTrace, reroute, responseModel, responseHeader, safetyBuffering
+    case threadSetting, turnContext, runtimeTrace, reroute, responseModel, responseHeader, safetyBuffering, serverModel
 
     public var label: String {
         switch self {
@@ -13,9 +13,10 @@ public enum EvidenceKind: String, Codable, Sendable {
         case .responseModel: "响应模型字段"
         case .responseHeader: "服务端模型响应头"
         case .safetyBuffering: "安全缓冲事件"
+        case .serverModel: "服务端模型事件"
         }
     }
-    public var isServerClaim: Bool { self == .reroute || self == .responseModel || self == .responseHeader }
+    public var isServerClaim: Bool { self == .reroute || self == .responseModel || self == .responseHeader || self == .serverModel }
 }
 
 public struct ModelEvidence: Codable, Identifiable, Sendable, Equatable {

@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Bindable var store: LensStore
     var close: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @State private var detailedCapture = false
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
@@ -14,6 +15,19 @@ struct SettingsView: View {
                 Spacer()
             }
             Form {
+                Section("服务端模型采集") {
+                    Text("为后续任务记录服务端报告的模型，包括未发生切换的响应。请先结束或暂停任务并自行退出 Codex / ChatGPT，再使用下方按钮打开。客户端运行期间不会自动重启。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Toggle("同时采集响应模型字段（实验性）", isOn: $detailedCapture)
+                    if detailedCapture {
+                        Text("此选项会让 Codex 自身记录 SSE / WebSocket 调试日志，可能包含任务内容，并增加磁盘与运行开销。Model Lens 只保存白名单模型元数据。请勿公开分享原始日志；正常重新打开客户端可恢复默认日志级别。")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
+                    Button("以模型采集模式打开 Codex / ChatGPT") { store.launchModelCapture(detailed: detailedCapture) }
+                    Text("默认只启用核心模块的 info 日志；上游必须返回模型字段，且记录必须包含明确任务与轮次 ID。不更改配置或登录文件，未保存的历史字段无法补回。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if let error = store.captureError { Text(error).font(.caption).foregroundStyle(.orange) }
+                }
                 Section("菜单栏平台") {
                     ForEach(UsageProvider.allCases) { provider in
                         Toggle(provider.title, isOn: Binding(get: { store.usage.preferences.enabled.contains(provider) }, set: { store.usage.enable(provider, $0) }))
@@ -22,6 +36,8 @@ struct SettingsView: View {
                     if let error = store.usage.configurationError { Text(error).font(.caption).foregroundStyle(.orange) }
                 }
                 Section("本机数据源") {
+                    Toggle("实时监听桌面模型路由", isOn: $store.settings.liveModelEvents)
+                    Text(store.desktopStatus.message).font(.caption).foregroundStyle(.secondary)
                     directoryField("Codex 数据目录", path: store.settings.codexHome) { store.chooseDirectory() }
                     Toggle("读取 Codex 桌面日志", isOn: $store.settings.scanDesktopLogs)
                     if store.settings.scanDesktopLogs {
