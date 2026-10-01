@@ -152,6 +152,7 @@ final class UsageHub {
         catch { configurationError = "用量历史保存失败。" }
     }
     private func refreshStatus(_ value: UsageProvider, force: Bool) {
+        guard value.supportsServiceStatus else { return }
         guard statusTasks[value] == nil else { return }
         if !force, let status = serviceStatuses[value], Date().timeIntervalSince(status.fetchedAt) < 300 { return }
         statusTasks[value] = Task {

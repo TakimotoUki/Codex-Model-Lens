@@ -16,8 +16,10 @@ struct ContentView: View {
                 TaskDetailView(thread: thread, store: store)
                     .id(thread.id)
             } else {
-                ContentUnavailableView("选择一个任务", systemImage: "viewfinder",
-                                       description: Text("查看轮次模型、路由变化与检测证据。"))
+                ContentUnavailableView {
+                    AppBrandIcon(size: 64)
+                    Text("选择一个任务").font(.title2.weight(.semibold))
+                } description: { Text("查看轮次模型、路由变化与检测证据。") }
             }
         }
         .navigationTitle("Codex Model Lens")
@@ -63,11 +65,7 @@ struct ContentView: View {
     private var sidebar: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: "viewfinder")
-                    .font(.system(size: 25, weight: .medium))
-                    .foregroundStyle(.blue)
-                    .frame(width: 46, height: 46)
-                    .glassEffect(.regular.tint(.blue.opacity(0.08)), in: .rect(cornerRadius: 14))
+                AppBrandIcon(size: 46)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Model Lens").font(.headline)
                     Text("让模型记录可追溯").font(.caption).foregroundStyle(.secondary)
@@ -168,14 +166,17 @@ struct ContentView: View {
                     List(selection: $store.selection) {
                         ForEach(store.visibleThreads) { thread in
                             TaskRow(thread: thread, hasBuffering: store.bufferingThreadIDs.contains(thread.id))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(minHeight: 80, alignment: .leading)
                                 .tag(thread.id)
-                                .padding(.vertical, 7)
+                                .listRowInsets(EdgeInsets(top: 9, leading: 12, bottom: 9, trailing: 12))
                                 .contextMenu {
                                     Button("移除本地检测记录", role: .destructive) { store.removeLocalTask(thread.id) }
                                         .disabled(store.isScanning)
                                 }
                         }
                     }.listStyle(.inset)
+                        .environment(\.defaultMinListRowHeight, 98)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -222,7 +223,9 @@ struct TaskRow: View {
             HStack(alignment: .top, spacing: 8) {
                 Circle().fill(thread.isRunning ? .blue : thread.isUnconfirmed ? .orange : .gray.opacity(0.5))
                     .frame(width: 6, height: 6).padding(.top, 6)
-                Text(thread.conciseTitle).font(.system(size: 13, weight: .medium)).lineLimit(2).help(thread.title)
+                Text(thread.conciseTitle).font(.system(size: 13, weight: .medium)).lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true).help(thread.title)
                 Spacer(minLength: 0)
                 if thread.hasModelDifference { Image(systemName: "arrow.triangle.branch").foregroundStyle(.orange) }
             }
@@ -237,6 +240,7 @@ struct TaskRow: View {
                 Text(thread.updatedAt, format: .dateTime.month().day())
             }.font(.caption2).foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 }

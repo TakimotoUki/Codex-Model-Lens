@@ -122,9 +122,9 @@ struct DashboardView: View {
 struct AboutView: View {
     var body: some View {
         VStack(spacing: 16) {
-            Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 88, height: 88)
+            AppBrandIcon(size: 88)
             Text("Codex Model Lens").font(.title2.weight(.semibold))
-            Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.3.0") · macOS 26+ · Apple Silicon").font(.caption).foregroundStyle(.secondary)
+            Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "开发版") · macOS 26+ · Apple Silicon").font(.caption).foregroundStyle(.secondary)
             Text("任务模型证据、多平台用量与番茄钟。\n以明确来源保存记录，让缺失信息保持透明。").multilineTextAlignment(.center).font(.callout)
             Text("TakimotoUki · 与 Codex AI 协作开发").font(.caption).foregroundStyle(.secondary)
             HStack { Link("开源仓库", destination: URL(string: "https://github.com/TakimotoUki/Codex-Model-Lens")!); Link("介绍网站", destination: URL(string: "https://takimotouki.github.io/Codex-Model-Lens/")!) }

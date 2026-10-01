@@ -6,6 +6,9 @@ public struct ServiceEvent: Sendable, Equatable, Identifiable {
     public var url: URL
     public var updatedAt: Date?
     public var phase: String?
+    public init(title: String, url: URL, updatedAt: Date? = nil, phase: String? = nil) {
+        self.title = title; self.url = url; self.updatedAt = updatedAt; self.phase = phase
+    }
 }
 public enum StatusFeedParser {
     public static func parse(_ data: Data, provider: UsageProvider, now: Date = Date()) throws -> ServiceStatus {
@@ -20,7 +23,6 @@ public enum StatusFeedParser {
             let title = clean(fields["title"] ?? "")
             let body = clean(fields["description"] ?? fields["summary"] ?? fields["content:encoded"] ?? "")
             guard !title.isEmpty else { continue }
-            if provider == .codex, !title.localizedCaseInsensitiveContains("codex"), !body.localizedCaseInsensitiveContains("codex") { continue }
             guard let url = URL(string: fields["link"] ?? fields["guid"] ?? fields["id"] ?? ""), url.scheme == "https",
                   url.host == provider.statusURL.host, url.user == nil, url.password == nil else { continue }
             let stamp = fields["updated"] ?? fields["pubDate"] ?? fields["published"]
@@ -35,7 +37,7 @@ public enum StatusFeedParser {
         events.sort { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
         let active = events.contains { ["monitoring", "identified", "investigating", "in_progress"].contains($0.phase ?? "") }
         let condition: ServiceCondition = provider == .antigravity ? .unknown : active ? .degraded : events.isEmpty || events.contains(where: { $0.phase == nil }) ? .unknown : .operational
-        let detail = provider == .antigravity ? "Google Cloud 参考订阅 · 未覆盖 Antigravity" : active ? "官方订阅有未解决事件" : condition == .operational ? "官方订阅暂无未解决事件" : "官方订阅未提供当前组件状态"
+        let detail = provider == .antigravity ? "Google Cloud · 公开事件订阅" : active ? "官方订阅有未解决事件" : condition == .operational ? "官方订阅暂无未解决事件" : "官方订阅未提供当前组件状态"
         return ServiceStatus(condition: condition, detail: detail, fetchedAt: now, events: Array(events.prefix(3)))
     }
     private static func clean(_ value: String) -> String {

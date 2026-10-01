@@ -7,6 +7,7 @@ struct MenuBarView: View {
     @Bindable var store: LensStore
     let delegate: LensAppDelegate
     @State private var usageHeight: CGFloat = 300
+    @State private var taskContentHeight: CGFloat = 0
     @State private var page: MenuPage = CommandLine.arguments.contains("--preview-timer") ? .timer : .usage
     private var hub: UsageHub { store.usage }
     private var tasks: [ThreadRecord] {
@@ -14,20 +15,9 @@ struct MenuBarView: View {
     }
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Label("Model Lens", systemImage: "viewfinder").font(.headline)
-                Spacer()
-                if page == .usage {
-                    if !hub.loading.isEmpty || store.isScanning { ProgressView().controlSize(.mini) }
-                    Button {
-                        Task { await store.refresh() }
-                        hub.refreshAll(codexHome: URL(fileURLWithPath: store.settings.codexHome))
-                    } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.borderless).help("刷新任务、所有已启用平台用量和服务状态")
-                }
-            }.padding(16)
             Picker("功能", selection: $page) {
                 ForEach(MenuPage.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }.pickerStyle(.segmented).labelsHidden().padding(.horizontal, 16).padding(.bottom, 14)
+            }.pickerStyle(.segmented).labelsHidden().padding(14)
             Divider()
             if page == .timer { PomodoroView(controller: store.pomodoro).padding(18) }
             else {
@@ -42,7 +32,10 @@ struct MenuBarView: View {
                             runningTasks
                         }
                         UsageSnapshotView(snapshot: hub.current, loading: hub.loading.contains(hub.currentID), error: hub.errors[hub.currentID])
-                        ProviderStatusView(provider: hub.provider, status: hub.serviceStatuses[hub.provider])
+                        if hub.provider.supportsServiceStatus, let status = hub.serviceStatuses[hub.provider],
+                           status.condition != .unknown || !status.events.isEmpty {
+                            ProviderStatusView(provider: hub.provider, status: status)
+                        }
                     }
                 }.padding(16).fixedSize(horizontal: false, vertical: true)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { usageHeight = $0 }
@@ -52,6 +45,15 @@ struct MenuBarView: View {
             HStack {
                 Button("打开主界面") { delegate.showMainWindow() }.buttonStyle(.glass)
                 Spacer()
+                if page == .usage {
+                    if !hub.loading.isEmpty || store.isScanning { ProgressView().controlSize(.mini) }
+                    Button {
+                        Task { await store.refresh() }
+                        hub.refreshAll(codexHome: URL(fileURLWithPath: store.settings.codexHome))
+                    } label: { Image(systemName: "arrow.clockwise") }
+                        .buttonStyle(.borderless).accessibilityLabel("刷新全部")
+                        .help("刷新任务、所有已启用平台用量和服务状态")
+                }
                 Menu {
                     Button("用量概览…") { delegate.showUtility(.dashboard) }
                     Button("添加账户…") { delegate.showUtility(.account) }
@@ -117,8 +119,9 @@ struct MenuBarView: View {
                                     .background(.quaternary.opacity(0.22), in: .rect(cornerRadius: 9))
                             }.buttonStyle(.plain)
                         }
-                    }
-                }.frame(height: min(CGFloat(tasks.count) * 74, 185))
+                    }.fixedSize(horizontal: false, vertical: true)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { taskContentHeight = $0 }
+                }.frame(height: min(taskContentHeight, 185))
             }
             Divider()
         }
@@ -137,9 +140,15 @@ struct UsageSnapshotView: View {
         VStack(alignment: .leading, spacing: 11) {
             if let snapshot {
                 if let plan = snapshot.plan { Text(plan).font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
-                ForEach(snapshot.meters.prefix(6)) { meter in
+                let meters = snapshot.meters.filter { $0.remainingPercent != nil || $0.resetsAt != nil }
+                ForEach(meters.prefix(6)) { meter in
                     VStack(alignment: .leading, spacing: 5) {
-                        HStack { Text(meter.title); Spacer(); Text(meter.remainingPercent.map { ($0 > 0 && $0 < 1 ? String(format: "剩余 %.2f%%", $0) : String(format: "剩余 %.0f%%", $0)) } ?? "剩余未知").monospacedDigit() }.font(.caption)
+                        HStack {
+                            Text(meter.title); Spacer()
+                            if let remaining = meter.remainingPercent {
+                                Text(remaining > 0 && remaining < 1 ? String(format: "剩余 %.2f%%", remaining) : String(format: "剩余 %.0f%%", remaining)).monospacedDigit()
+                            }
+                        }.font(.caption)
                         if let left = meter.remainingPercent { ProgressView(value: left, total: 100).tint(left < 15 ? .orange : .blue) }
                         if let reset = meter.resetsAt {
                             HStack {
@@ -149,7 +158,7 @@ struct UsageSnapshotView: View {
                         }
                     }
                 }
-                if snapshot.meters.count > 6 { Text("其他额度见 用量概览").font(.caption2).foregroundStyle(.secondary) }
+                if meters.count > 6 { Text("其他额度见 用量概览").font(.caption2).foregroundStyle(.secondary) }
                 if let balance = snapshot.balance {
                     HStack {
                         Text(snapshot.currency == "积分" ? "剩余积分" : snapshot.currency == "购买额度" ? "购买额度" : "余额")
@@ -161,20 +170,23 @@ struct UsageSnapshotView: View {
                         Text(String(format: "充值 %.2f · 赠送 %.2f", paid, granted)).font(.caption2).foregroundStyle(.secondary)
                     }
                 }
-                if snapshot.provider == .codex {
+                if snapshot.provider == .codex, let cards = snapshot.availableResetCards {
                     HStack {
                         Text("重置卡")
                         Spacer()
-                        Text(snapshot.availableResetCards.map { "\($0) 张可用" } ?? "暂未提供")
+                        Text("\(cards) 张可用")
                     }.font(.callout.weight(.medium))
                     if let expiry = snapshot.resetCardExpiresAt {
                         Text("最近一张到期 \(expiry.formatted(.dateTime.month().day().hour().minute()))")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
                 }
-                HStack {
-                    metric("今日 Token · UTC", snapshot.todayTokens)
-                    Spacer(); metric("累计 Token", snapshot.tokens)
+                if snapshot.todayTokens != nil || snapshot.tokens != nil {
+                    HStack {
+                        if let today = snapshot.todayTokens { metric("今日 Token · UTC", today) }
+                        Spacer()
+                        if let total = snapshot.tokens { metric("累计 Token", total) }
+                    }
                 }
                 if let credits = snapshot.spentCredits { Text(String(format: "本机已记录消耗 · %.2f 积分", credits)).font(.callout.weight(.medium)) }
                 if let note = snapshot.note { Text(note).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
@@ -186,8 +198,8 @@ struct UsageSnapshotView: View {
             if let error { Text(error).font(.caption2).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
         }
     }
-    private func metric(_ title: String, _ value: Int64?) -> some View {
-        VStack(alignment: .leading, spacing: 3) { Text(title).font(.caption2).foregroundStyle(.secondary); Text(value.map(CompactNumber.tokens) ?? "暂无数据").font(.caption.weight(.medium).monospacedDigit()) }
+    private func metric(_ title: String, _ value: Int64) -> some View {
+        VStack(alignment: .leading, spacing: 3) { Text(title).font(.caption2).foregroundStyle(.secondary); Text(CompactNumber.tokens(value)).font(.caption.weight(.medium).monospacedDigit()) }
     }
 }
 

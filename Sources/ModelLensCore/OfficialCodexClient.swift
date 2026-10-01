@@ -3,7 +3,7 @@ import Security
 import Darwin
 
 public enum OfficialClientError: Error, LocalizedError {
-    case unavailable, invalidSignature, noLogin, invalidModel, serviceUnavailable, timeout
+    case unavailable, invalidSignature, noLogin, invalidModel, serviceUnavailable, timeout, captureConnection(String)
     public var errorDescription: String? {
         switch self {
         case .unavailable: "未找到官方 Codex 客户端内置的 CLI。"
@@ -12,6 +12,7 @@ public enum OfficialClientError: Error, LocalizedError {
         case .invalidModel: "请输入有效模型名。"
         case .serviceUnavailable: "官方接口没有返回可读取数据，请稍后刷新。"
         case .timeout: "读取超时，请稍后重试。"
+        case .captureConnection(let reason): "采集连接验证失败：\(reason)。未以代理模式打开客户端。"
         }
     }
 }
@@ -47,16 +48,25 @@ public actor OfficialCodexClient {
         return ModelProbeReport(requestedModel: model, testedAt: started, duration: Date().timeIntervalSince(started),
             exitCode: outcome.code, timedOut: outcome.timedOut, frames: parser.frames, errorEvents: parser.errors, responses: parser.responses)
     }
-    public func account(codexHome: URL, dataDirectory: URL, credentials: Data? = nil) async throws -> AccountSnapshot {
+    public func account(codexHome: URL, dataDirectory: URL, credentials: Data? = nil, captureEnvironment: [String: String]? = nil) async throws -> AccountSnapshot {
         let binary = try await verifiedBinary()
         let privateRun = try prepare(codexHome: codexHome, dataDirectory: dataDirectory, credentials: credentials)
         defer { try? FileManager.default.removeItem(at: privateRun) }
         let process = configuredProcess(binary: binary, privateRun: privateRun)
         // Fresh home has no user config, hooks, MCP connections, or third-party providers.
         process.arguments = ["app-server", "--stdio", "-c", "cli_auth_credentials_store=\"file\"", "-c", "notify=[]"]
+        if let captureEnvironment {
+            guard let origin = captureEnvironment["CODEX_APP_SERVER_CHATGPT_BASE_URL"], let url = URL(string: origin),
+                  url.scheme == "https", url.host == "127.0.0.1", let port = url.port, (1024...65535).contains(port),
+                  url.path(percentEncoded: false) == "/backend-api/", url.query == nil, url.fragment == nil, url.user == nil, url.password == nil,
+                  let ca = captureEnvironment["CODEX_CA_CERTIFICATE"], FileManager.default.fileExists(atPath: ca) else { throw OfficialClientError.serviceUnavailable }
+            process.arguments! += ["-c", "chatgpt_base_url=\"\(origin)\""]
+            process.environment?["CODEX_CA_CERTIFICATE"] = ca
+        }
         let initial: [String: Any] = ["id": 0, "method": "initialize", "params": ["clientInfo": ["name": "model_lens", "version": "1.3.0"], "capabilities": ["experimentalApi": true]]]
         var results: [Int: [String: Any]] = [:]
         var received: Set<Int> = []
+        var captureFailure: String?
         let outcome = try await execute(process, timeout: 35, initial: initial, onOutput: { line, input in
             guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any], let id = object["id"] as? Int else { return }
             if id == 0 {
@@ -68,12 +78,18 @@ public actor OfficialCodexClient {
                     try? Self.send(request, to: input)
                 }
             } else if (1...3).contains(id) {
+                if id == 2, let error = object["error"] as? [String: Any], let message = error["message"] as? String {
+                    for marker in ["CaUsedAsEndEntity", "UnknownIssuer", "CertNotValidForName", "certificate", "403", "401", "502", "503", "connection refused", "error sending request", "timed out"] where message.localizedCaseInsensitiveContains(marker) {
+                        captureFailure = marker; break
+                    }
+                }
                 received.insert(id)
                 results[id] = object["result"] as? [String: Any]
                 if received.count == 3 { process.terminate() }
             }
         }, onError: { _ in })
         if results.isEmpty { throw outcome.timedOut ? OfficialClientError.timeout : OfficialClientError.serviceUnavailable }
+        if captureEnvironment != nil, results[2] == nil { throw OfficialClientError.captureConnection(captureFailure ?? (outcome.timedOut ? "请求超时" : "账户额度接口无有效响应")) }
         var result = AccountSnapshot.parse(account: results[1], quotas: results[2], usage: results[3])
         if results[2] == nil { result.quotaNote = "额度接口暂不可用" }
         if results[3] == nil { result.tokenNote = "此版本或账户暂未提供账户 Token 统计" }

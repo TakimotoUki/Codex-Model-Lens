@@ -20,8 +20,12 @@ struct LensCLI {
                 try await session.install(archive: argument("--component-archive").map { URL(fileURLWithPath: $0) })
                 print("Network component ready: \(await session.ready())")
                 if let script = argument("--network-script"), let output = argument("--output") {
-                    let environment = try await session.start(script: URL(fileURLWithPath: script), outputDirectory: URL(fileURLWithPath: path).appendingPathComponent("ImportedEvidence"))
+                    let environment = try await session.start(script: URL(fileURLWithPath: script), outputDirectory: URL(fileURLWithPath: path).appendingPathComponent("NetworkEvidence"))
                     try PrivateMetadata.save(environment, to: URL(fileURLWithPath: output))
+                    if args.contains("--verify-account") {
+                        let account = try await OfficialCodexClient().account(codexHome: home, dataDirectory: URL(fileURLWithPath: path), captureEnvironment: environment)
+                        print("Official Codex TLS accepted; quota windows: \(account.buckets.count)")
+                    }
                     try? await Task.sleep(for: .seconds(30)); await session.stop()
                 }
             } catch { FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8)); exit(1) }
@@ -30,6 +34,7 @@ struct LensCLI {
         if let name = argument("--service-status"), let provider = UsageProvider(rawValue: name) {
             let value = await ServiceStatusClient().fetch(provider)
             print("\(provider.title): \(value.condition.rawValue); \(value.detail)")
+            for item in value.items { print("\(item.title): \(item.condition.rawValue); \(item.detail)") }
             return
         }
         if let name = argument("--provider"), let provider = UsageProvider(rawValue: name), provider != .codex {
@@ -57,7 +62,8 @@ struct LensCLI {
         }
         let config = ScannerConfiguration(codexHome: home,
                                           desktopLogs: argument("--desktop-logs").map { URL(fileURLWithPath: $0) },
-                                          importedEvidence: argument("--evidence").map { URL(fileURLWithPath: $0) })
+                                          importedEvidence: argument("--evidence").map { URL(fileURLWithPath: $0) },
+                                          networkEvidence: argument("--network-evidence").map { URL(fileURLWithPath: $0) })
         var result = await CodexScanner(configuration: config).scan(clientIsRunning: !args.contains("--client-offline"))
         if let value = argument("--desktop-live"), let seconds = Double(value), seconds.isFinite, seconds > 0, seconds <= 60 {
             let collector = LiveCollection()

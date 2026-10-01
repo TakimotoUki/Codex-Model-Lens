@@ -91,7 +91,7 @@ public enum HistoryStore {
         for var current in new {
             if let prior = turns[current.id] {
                 let evidence = Dictionary((prior.evidence + current.evidence).map { ($0.id, $0) },
-                                          uniquingKeysWith: { first, _ in first })
+                                          uniquingKeysWith: { first, last in first.origin == nil && last.origin != nil ? last : first })
                 current.evidence = evidence.values.sorted {
                     $0.timestamp == $1.timestamp ? $0.id < $1.id : $0.timestamp < $1.timestamp
                 }

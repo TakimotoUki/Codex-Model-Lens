@@ -22,12 +22,12 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                     HStack {
                         if !store.networkCapture.ready { Button("下载网络采集组件…") { store.networkCapture.install() } }
-                        else { Button("以网络采集模式打开 Codex") { store.networkCapture.launch(outputDirectory: store.importedDirectory) } }
+                        else { Button("以网络采集模式打开 Codex") { store.networkCapture.launch(outputDirectory: store.networkDirectory, codexHome: URL(fileURLWithPath: store.settings.codexHome), dataDirectory: store.dataDirectory) } }
                         if store.networkCapture.isRunning { Button("停止采集") { store.networkCapture.stop() } }
                         if store.networkCapture.busy { ProgressView().controlSize(.small) }
                     }.disabled(store.networkCapture.busy)
                     Text(store.networkCapture.message).font(.caption).foregroundStyle(store.networkCapture.isRunning ? .blue : .secondary)
-                    Text("组件按需下载，占用独立磁盘空间；采集时会增加内存与 CPU 开销，默认关闭。服务端若未公开真实模型名，仍会明确显示未确认。")
+                    Text("启动前以隔离官方 CLI 读取账户验证 TLS，不生成回复；需要已正常登录 Codex。组件按需下载，采集时增加资源开销，默认关闭。服务端若未公开模型名，仍显示未确认。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("服务端模型采集") {

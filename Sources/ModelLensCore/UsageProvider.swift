@@ -31,6 +31,15 @@ public enum UsageProvider: String, Codable, Sendable, CaseIterable, Identifiable
         }
         return URL(string: value)!
     }
+    public var supportsServiceStatus: Bool { [.codex, .antigravity, .deepseek].contains(self) }
+    public var statusScope: String {
+        switch self {
+        case .codex: "OpenAI 服务状态"
+        case .antigravity: "Google 服务状态"
+        case .deepseek: "DeepSeek 服务状态"
+        case .opencodego, .workbuddy: ""
+        }
+    }
 }
 
 public struct UsageMeter: Codable, Identifiable, Sendable, Equatable {

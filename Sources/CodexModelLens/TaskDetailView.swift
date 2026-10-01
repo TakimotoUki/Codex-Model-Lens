@@ -17,7 +17,7 @@ struct TaskDetailView: View {
                 title
                 if let turn = selectedTurn {
                     comparison(turn)
-                    requestEvidence(turn)
+                    if !store.requests(threadID: thread.id, turnID: turn.id).isEmpty || !turn.safetyEvidence.isEmpty { requestEvidence(turn) }
                     evidence(turn)
                 } else {
                     ContentUnavailableView("暂无轮次模型证据", systemImage: "doc.questionmark",
@@ -95,7 +95,9 @@ struct TaskDetailView: View {
             }
             Text(turn.reportedModel == nil
                  ? "本轮尚未留下服务端模型记录。实时路由监听与服务端日志采集可用于后续响应。"
-                 : "服务端字段是可观察到的模型报告；本地日志和导入文件未经独立认证，无法证明底层模型权重。")
+                 : turn.effectiveServerEvidence.contains(where: { $0.origin == .networkCapture })
+                    ? "已从本机网络响应采集模型字段，并按任务与轮次 ID 关联。"
+                    : "模型字段及定位见下方证据来源。")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if turn.reportedModel == nil {
                 Button("设置模型采集…") { store.showingSettings = true }
@@ -173,7 +175,11 @@ struct TaskDetailView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
                             Text(item.kind.label).font(.caption.weight(.medium))
-                            if item.source.contains("ImportedEvidence") { Text("导入 · 未认证").font(.caption2).foregroundStyle(.orange) }
+                            if item.origin == .networkCapture {
+                                Text("网络响应采集").font(.caption2).foregroundStyle(.blue)
+                            } else if item.origin == .manualImport || item.source.contains("ImportedEvidence") {
+                                Text("手动导入").font(.caption2).foregroundStyle(.secondary)
+                            }
                             Spacer()
                             if item.timestamp != .distantPast { Text(item.timestamp, style: .time).font(.caption2).foregroundStyle(.secondary) }
                         }

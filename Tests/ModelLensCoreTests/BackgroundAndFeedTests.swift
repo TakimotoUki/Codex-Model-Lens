@@ -3,6 +3,17 @@ import Testing
 @testable import ModelLensCore
 
 @Suite("Background quota and official subscriptions") struct BackgroundAndFeedTests {
+    @Test func timestampsRemainCorrectUnderConcurrentParsing() async {
+        let expected = Date(timeIntervalSince1970: 1790816400)
+        await withTaskGroup(of: Bool.self) { group in
+            for index in 0..<100 {
+                group.addTask { LensDate.parse(index.isMultiple(of: 2) ? "2026-10-01T09:00:00+08:00" : "2026-10-01T01:00:00.000Z") == expected }
+            }
+            for await correct in group { #expect(correct) }
+        }
+        #expect(LensDate.parse(Double.infinity) == nil)
+        #expect(LensDate.parse(Double.nan) == nil)
+    }
     @Test func protobufZeroRequiresVerifiedEndpointAndReset() throws {
         let status: [String: Any] = ["userStatus": ["cascadeModelConfigData": ["clientModelConfigs": [["label":"Gemini 3", "quotaInfo":["resetTime":"2026-10-02T17:39:14Z"]]]]]]
         #expect(try ProviderParsers.antigravity(summary: [:], status: status).meters[0].remainingPercent == nil)
@@ -21,10 +32,11 @@ import Testing
     func item(_ name: String, _ state: String, _ path: String = "1", _ date: String = "Thu, 01 Oct 2026 04:00:00 GMT") -> String {
         "<item><title>\(name)</title><link>https://status.openai.com/incidents/\(path)</link><pubDate>\(date)</pubDate><description><![CDATA[<b>Status:</b> \(state)<br/><b>Affected components</b> Codex CLI]]></description></item>"
     }
-    @Test func openAIStatusFiltersOtherProductsAndNewestIncidentWins() throws {
+    @Test func openAIStatusIncludesAllProductsAndNewestIncidentWins() throws {
         let data = rss(item("Codex recovered", "Resolved") + item("Codex earlier", "Investigating", "1", "Wed, 30 Sep 2026 04:00:00 GMT") + "<item><title>Space errors</title><link>https://status.openai.com/incidents/space</link><description>Status: Investigating Space</description></item>")
         let status = try StatusFeedParser.parse(data, provider: .codex)
-        #expect(status.condition == .operational && status.events.count == 1 && status.events[0].phase == "resolved")
+        #expect(status.condition == .degraded && status.events.count == 2)
+        #expect(status.events.first(where: { $0.url.path.hasSuffix("/1") })?.phase == "resolved")
         #expect(try StatusFeedParser.parse(rss(item("Codex errors", "Monitoring")), provider: .codex).condition == .degraded)
         #expect(try StatusFeedParser.parse(rss(""), provider: .codex).condition == .unknown)
     }

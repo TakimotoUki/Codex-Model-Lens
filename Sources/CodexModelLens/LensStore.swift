@@ -93,6 +93,7 @@ final class LensStore {
 
     var historyURL: URL { dataDirectory.appendingPathComponent("model-history.json") }
     var importedDirectory: URL { dataDirectory.appendingPathComponent("ImportedEvidence") }
+    var networkDirectory: URL { dataDirectory.appendingPathComponent("NetworkEvidence") }
     var settingsURL: URL { dataDirectory.appendingPathComponent("settings.json") }
     var liveIDs: Set<String> { Set(latestScan.threads.map(\.id)) }
     var visibleThreads: [ThreadRecord] {
@@ -145,7 +146,8 @@ final class LensStore {
         scanner = CodexScanner(configuration: ScannerConfiguration(
             codexHome: URL(fileURLWithPath: initialSettings.codexHome),
             desktopLogs: initialSettings.scanDesktopLogs ? URL(fileURLWithPath: initialSettings.desktopLogs) : nil,
-            importedEvidence: dataDirectory.appendingPathComponent("ImportedEvidence")))
+            importedEvidence: dataDirectory.appendingPathComponent("ImportedEvidence"),
+            networkEvidence: dataDirectory.appendingPathComponent("NetworkEvidence")))
         settings = initialSettings
     }
 
@@ -185,7 +187,7 @@ final class LensStore {
         scanner = CodexScanner(configuration: ScannerConfiguration(
             codexHome: URL(fileURLWithPath: settings.codexHome),
             desktopLogs: settings.scanDesktopLogs ? URL(fileURLWithPath: settings.desktopLogs) : nil,
-            importedEvidence: importedDirectory))
+            importedEvidence: importedDirectory, networkEvidence: networkDirectory))
     }
 
     private func writeMigrationAudit(_ report: StorageMigrationReport) {
@@ -250,7 +252,7 @@ final class LensStore {
             scanner = CodexScanner(configuration: ScannerConfiguration(
                 codexHome: URL(fileURLWithPath: settings.codexHome),
                 desktopLogs: settings.scanDesktopLogs ? URL(fileURLWithPath: settings.desktopLogs) : nil,
-                importedEvidence: importedDirectory))
+                importedEvidence: importedDirectory, networkEvidence: networkDirectory))
             updateDesktopMonitor()
         } catch { storageError = "设置保存失败：\(error.localizedDescription)" }
     }
