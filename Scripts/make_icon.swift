@@ -3,40 +3,11 @@ import Foundation
 
 let destination = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("AppIcon.iconset")
 try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+guard let image = NSImage(contentsOf: destination.deletingLastPathComponent().appendingPathComponent("AppIcon.png")) else {
+    fatalError("Missing generated AppIcon.png")
+}
 
 func drawIcon(pixels: Int) -> Data {
-    let image = NSImage(size: NSSize(width: 1024, height: 1024))
-    image.lockFocus()
-    let box = NSRect(x: 68, y: 68, width: 888, height: 888)
-    let path = NSBezierPath(roundedRect: box, xRadius: 206, yRadius: 206)
-    NSGraphicsContext.saveGraphicsState()
-    let shadow = NSShadow(); shadow.shadowColor = NSColor.black.withAlphaComponent(0.15)
-    shadow.shadowBlurRadius = 38; shadow.shadowOffset = NSSize(width: 0, height: -16); shadow.set()
-    NSColor.white.setFill(); path.fill()
-    NSGraphicsContext.restoreGraphicsState()
-    let gradient = NSGradient(colors: [NSColor(red: 0.94, green: 0.97, blue: 1.00, alpha: 1),
-                                      NSColor(red: 0.66, green: 0.83, blue: 1.00, alpha: 1),
-                                      NSColor(red: 0.15, green: 0.48, blue: 0.95, alpha: 1)])!
-    gradient.draw(in: path, angle: -65)
-    NSColor.white.withAlphaComponent(0.75).setStroke(); path.lineWidth = 6; path.stroke()
-    let inset = NSBezierPath(roundedRect: NSRect(x: 188, y: 188, width: 648, height: 648), xRadius: 145, yRadius: 145)
-    NSColor.white.withAlphaComponent(0.18).setFill(); inset.fill()
-    NSColor.white.withAlphaComponent(0.6).setStroke(); inset.lineWidth = 3; inset.stroke()
-    let ink = NSColor(red: 0.04, green: 0.21, blue: 0.48, alpha: 1)
-    ink.setStroke()
-    let corners = NSBezierPath(); corners.lineWidth = 31; corners.lineCapStyle = .round; corners.lineJoinStyle = .round
-    for (x, y, dx, dy) in [(300.0, 300.0, 1.0, 1.0), (724, 300, -1, 1), (300, 724, 1, -1), (724, 724, -1, -1)] {
-        corners.move(to: NSPoint(x: x + dx * 87, y: y))
-        corners.line(to: NSPoint(x: x, y: y))
-        corners.line(to: NSPoint(x: x, y: y + dy * 87))
-    }
-    corners.stroke()
-    let lens = NSBezierPath(ovalIn: NSRect(x: 395, y: 395, width: 234, height: 234))
-    NSColor.white.withAlphaComponent(0.28).setFill(); lens.fill()
-    ink.setStroke(); lens.lineWidth = 23; lens.stroke()
-    let focus = NSBezierPath(ovalIn: NSRect(x: 485, y: 485, width: 54, height: 54))
-    ink.setFill(); focus.fill()
-    image.unlockFocus()
     let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels, bitsPerSample: 8,
                                   samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
                                   bytesPerRow: 0, bitsPerPixel: 0)!

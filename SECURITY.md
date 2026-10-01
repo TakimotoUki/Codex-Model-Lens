@@ -4,7 +4,7 @@ Report a vulnerability privately through the repository's security reporting int
 
 ## What the app reads
 
-Codex task titles, working directories, turn metadata, whitelisted routing events, response model fields/headers and request diagnostic metadata; enabled providers' quota/balance metadata; optional device-local cost/credit records. SQLite connections are read-only. Sources are not rewritten.
+Codex task titles, working directories, turn metadata, whitelisted routing events, response model fields/headers and request diagnostic metadata; enabled providers' quota/balance metadata; optional device-local token/credit records. SQLite connections are read-only. Sources are not rewritten.
 
 The optional desktop observer uses a same-user Unix socket with a non-writable parent directory, validates the peer UID and the running OpenAI-signed router, caps frames at 16 MiB and subscriptions at 40, and never handles task execution or approval requests. State frames can transiently contain task contents in memory; only typed model routing items at known turn paths are retained. It does not recursively scan tool output or model text. Revision gaps discard identity mappings until a fresh snapshot arrives. This desktop IPC is an internal protocol and may change with client updates.
 
@@ -27,3 +27,5 @@ A server model field is a reported identity, not a cryptographic proof of model 
 ## Outbound connections
 
 Only an explicitly opened/refreshed enabled provider is fetched. Expected remote hosts are `chatgpt.com`/OpenAI through the verified official CLI, `api.deepseek.com`, `opencode.ai`, and recognized official WorkBuddy billing hosts. Antigravity uses the local language server. No app telemetry, analytics SDK, update downloader or background model-generating request is included.
+
+Public status reads use ephemeral HTTPS sessions without account cookies, authentication headers, or URL credential storage. Responses are limited to 2 MiB, redirects are refused and normal system certificate validation is retained. Unknown or unsupported component coverage is never projected as operational. Codex reset-credit reads retain only the available count and nearest expiry; opaque redemption IDs are dropped and no reset-consumption method is invoked.

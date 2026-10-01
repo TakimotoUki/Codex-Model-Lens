@@ -67,7 +67,6 @@ public actor ProviderClient {
                 let key = try credential ?? openCodeKey()
                 var value = try ProviderParsers.opencode(await request("https://opencode.ai/zen/go/v1/usage", headers: ["Authorization": "Bearer " + key]), account: accountID)
                 if let history = local {
-                    value.dailyCosts = history.dailyCosts; value.recordedCost = history.recordedCost
                     value.tokens = history.tokens; value.todayTokens = history.todayTokens; value.note = history.note
                 }
                 return value

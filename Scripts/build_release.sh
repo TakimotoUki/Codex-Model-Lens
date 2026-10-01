@@ -13,6 +13,8 @@ cp .build/arm64-apple-macosx/release/CodexModelLens "$APP_PATH/Contents/MacOS/Co
 cp Resources/Info.plist "$APP_PATH/Contents/Info.plist"
 swift -sdk "$TASK_SDK" -module-cache-path "$CLANG_MODULE_CACHE_PATH" Scripts/make_icon.swift "$TASK_ROOT/Resources"
 cp Resources/AppIcon.icns "$APP_PATH/Contents/Resources/AppIcon.icns"
+swift -sdk "$TASK_SDK" -module-cache-path "$CLANG_MODULE_CACHE_PATH" Scripts/package_provider_icons.swift "$TASK_ROOT/Resources"
+cp -R Resources/ProviderIcons "$APP_PATH/Contents/Resources/"
 cp .build/arm64-apple-macosx/release/model-lens Distribution/model-lens
 codesign --force --sign "${MODEL_LENS_SIGNING_IDENTITY:--}" --options runtime "$APP_PATH"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"

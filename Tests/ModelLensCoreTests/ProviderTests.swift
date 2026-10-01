@@ -3,7 +3,7 @@ import Foundation
 import CSQLite
 @testable import ModelLensCore
 
-@Suite("Provider units, account boundaries and local cost")
+@Suite("Provider units, account boundaries and local tokens")
 struct ProviderTests {
     @Test func compactNumberThresholds() {
         #expect(CompactNumber.tokens(999) == "999")
@@ -27,7 +27,7 @@ struct ProviderTests {
         let root: [String: Any] = ["balance_infos": [["currency": "USD", "total_balance": "12.5", "topped_up_balance": "10", "granted_balance": "2.5"]], "is_available": true, "access_token": "PRIVATE"]
         let value = try ProviderParsers.deepseek(root, account: "accountA")
         #expect(value.balance == 12.5 && value.paidBalance == 10 && value.grantedBalance == 2.5)
-        #expect(value.tokens == nil && value.recordedCost == nil)
+        #expect(value.tokens == nil)
         #expect(!String(decoding: try JSONEncoder().encode(value), as: UTF8.self).contains("PRIVATE"))
     }
     @Test func antigravityUsesRealStarterTierAndUnknownFraction() throws {
@@ -62,12 +62,6 @@ struct ProviderTests {
         let value = AccountSnapshot.parse(account: nil, quotas: nil, usage: ["dailyUsageBuckets": [["startDate": day, "tokens": Int64.max], ["startDate": day, "tokens": 1]]], now: now)
         #expect(value.todayTokens == nil)
     }
-    @Test func pricesDoNotDoubleChargeCachedInput() {
-        var rates = CostRates(); rates.input = 10; rates.cachedInput = 1; rates.output = 20
-        #expect(rates.estimate(TokenUsage(input: 1_000_000, cachedInput: 500_000, output: 100_000)) == 7.5)
-        #expect(rates.estimate(TokenUsage(input: 1, cachedInput: 2, output: 1)) == nil)
-        #expect(CostRates().estimate(TokenUsage(input: 1, cachedInput: 0, output: 1)) == nil)
-    }
     @Test func credentialFingerprintUsesAccountIdentityAndDropsSecrets() throws {
         func auth(_ id: String, _ token: String) throws -> Data { try JSONSerialization.data(withJSONObject: ["auth_mode": "chatgpt", "tokens": ["access_token": token, "account_id": id]]) }
         let a = try auth("a", "secret1"), b = try auth("b", "secret1")
@@ -76,7 +70,7 @@ struct ProviderTests {
         #expect(CodexCredentials.fingerprint(a) != CodexCredentials.fingerprint(b))
         #expect(!CodexCredentials.fingerprint(a).contains("secret"))
     }
-    @Test func sqliteCostPrefersStepsAndExcludesOtherProviders() throws {
+    @Test func sqliteTokensPreferStepsAndExcludesOtherProviders() throws {
         let dir = try fixtureDirectory(); defer { try? FileManager.default.removeItem(at: dir) }
         let file = dir.appendingPathComponent("opencode.db"); var db: OpaquePointer?
         #expect(sqlite3_open(file.path, &db) == SQLITE_OK); defer { sqlite3_close(db) }
@@ -91,7 +85,7 @@ struct ProviderTests {
         try insert("part", "m", ["type": "step-finish", "cost": 2, "tokens": ["total": 200]])
         try insert("message", "other", ["role": "assistant", "providerID": "openai", "cost": 1000])
         let value = try OpenCodeHistory.load(url: file)
-        #expect(value.recordedCost == 3.25 && value.tokens == 300 && value.dailyCosts.count == 1)
+        #expect(value.tokens == 300 && value.todayTokens == 300)
         #expect(value.accountID == "device-local")
         #expect(throws: SQLiteReadError.self) { try ReadOnlySQLite(url: file).query("DELETE FROM message") }
     }
@@ -108,7 +102,7 @@ struct ProviderTests {
     @Test func openCodeConsoleMicroCentsAndWorkspaceBoundary() throws {
         let value = try ProviderParsers.opencodeConsole(["access": ["endsAt": "2026-11-01T00:00:00Z", "meters": ["month": ["usedMicroCents": "50000000", "limitMicroCents": "100000000"]]]], billing: ["balanceMicroCents": "250000000"], account: "org-scoped")
         #expect(value.balance == 2.5 && value.meters.first?.remainingPercent == 50)
-        #expect(value.meters.first?.resetsAt != nil && value.tokens == nil && value.dailyCosts.isEmpty)
+        #expect(value.meters.first?.resetsAt != nil && value.tokens == nil)
         let prepaid = try ProviderParsers.opencodeConsole([:], billing: ["balanceMicroCents": "0"], account: "zero")
         #expect(prepaid.balance == 0 && prepaid.meters.isEmpty)
     }

@@ -31,7 +31,6 @@ public enum UsageProvider: String, Codable, Sendable, CaseIterable, Identifiable
         }
         return URL(string: value)!
     }
-    public var hasDedicatedStatusPage: Bool { self == .codex || self == .deepseek || self == .antigravity }
 }
 
 public struct UsageMeter: Codable, Identifiable, Sendable, Equatable {
@@ -57,19 +56,13 @@ public struct UsageSnapshot: Codable, Sendable, Equatable {
     public var tokens: Int64?
     public var todayTokens: Int64?
     public var spentCredits: Double?
-    public var recordedCost: Double?
-    public var dailyCosts: [DailyCost] = []
+    public var availableResetCards: Int64?
+    public var resetCardExpiresAt: Date?
     public var source: String
     public var note: String?
     public init(provider: UsageProvider, accountID: String, source: String) {
         self.provider = provider; self.accountID = accountID; self.source = source
     }
-}
-public struct DailyCost: Codable, Identifiable, Sendable, Equatable {
-    public var day: String
-    public var amount: Double
-    public var tokens: Int64?
-    public var id: String { day }
 }
 public struct UsageAccount: Codable, Identifiable, Sendable, Equatable {
     public var id: String
@@ -92,18 +85,5 @@ public enum CompactNumber {
         while text.hasSuffix("0") { text.removeLast() }
         if text.hasSuffix(".") { text.removeLast() }
         return text + suffix
-    }
-}
-public struct CostRates: Codable, Sendable, Equatable {
-    public var input: Double = 0
-    public var cachedInput: Double = 0
-    public var output: Double = 0
-    public init() {}
-    public func estimate(_ usage: TokenUsage) -> Double? {
-        guard [input, cachedInput, output].allSatisfy({ $0.isFinite && $0 >= 0 }), input + cachedInput + output > 0,
-              let incoming = usage.input, let outgoing = usage.output, let cached = usage.cachedInput,
-              incoming >= cached, outgoing >= 0, cached >= 0 else { return nil }
-        let amount = (Double(incoming - cached) * input + Double(cached) * cachedInput + Double(outgoing) * output) / 1_000_000
-        return amount.isFinite ? amount : nil
     }
 }

@@ -14,6 +14,11 @@ struct LensCLI {
             return
         }
         let home = (argument("--home") ?? ProcessInfo.processInfo.environment["CODEX_HOME"]).map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex")
+        if let name = argument("--service-status"), let provider = UsageProvider(rawValue: name) {
+            let value = await ServiceStatusClient().fetch(provider)
+            print("\(provider.title): \(value.condition.rawValue); \(value.detail)")
+            return
+        }
         if let name = argument("--provider"), let provider = UsageProvider(rawValue: name), provider != .codex {
             do {
                 let value = try await ProviderClient().fetch(provider)

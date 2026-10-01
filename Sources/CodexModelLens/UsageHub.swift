@@ -6,7 +6,6 @@ struct UsagePreferences: Codable {
     var enabled: Set<UsageProvider> = [.codex]
     var accounts: [UsageAccount] = []
     var selected: [UsageProvider: String] = [:]
-    var rates = CostRates()
 }
 @MainActor @Observable
 final class UsageHub {
@@ -17,6 +16,9 @@ final class UsageHub {
     var errors: [String: String] = [:]
     var loading: Set<String> = []
     var configurationError: String?
+    var serviceStatuses: [UsageProvider: ServiceStatus] = [:]
+    private var statusTasks: [UsageProvider: Task<Void, Never>] = [:]
+    private let statusClient = ServiceStatusClient()
     private var tasks: [String: Task<Void, Never>] = [:]
     private let client = ProviderClient()
     private let official = OfficialCodexClient()
@@ -46,6 +48,7 @@ final class UsageHub {
     func enable(_ value: UsageProvider, _ enabled: Bool) {
         if enabled { preferences.enabled.insert(value) } else {
             preferences.enabled.remove(value)
+            statusTasks[value]?.cancel(); serviceStatuses[value] = nil
             for key in tasks.keys { if key == "local-" + value.rawValue || preferences.accounts.contains(where: { $0.id == key && $0.provider == value }) { tasks[key]?.cancel() } }
         }
         if !preferences.enabled.contains(provider) { provider = enabledProviders.first ?? .codex }
@@ -77,8 +80,16 @@ final class UsageHub {
         preferences.selected[value] = id; save()
     }
     func refresh(codexHome: URL, force: Bool = false) {
-        guard preferences.enabled.contains(provider), !CommandLine.arguments.contains("--demo") else { return }
-        let value = provider, id = currentID
+        refresh(provider, id: currentID, codexHome: codexHome, force: force)
+    }
+    func refreshAll(codexHome: URL) {
+        for value in enabledProviders {
+            refresh(value, id: preferences.selected[value] ?? "local-" + value.rawValue, codexHome: codexHome, force: true)
+        }
+    }
+    private func refresh(_ value: UsageProvider, id: String, codexHome: URL, force: Bool) {
+        guard preferences.enabled.contains(value), !CommandLine.arguments.contains("--demo") else { return }
+        refreshStatus(value, force: force)
         guard !loading.contains(id) else { return }
         if value == .codex && id.hasPrefix("local-") {
             do {
@@ -107,13 +118,14 @@ final class UsageHub {
                     }
                     snapshot = UsageSnapshot(provider: .codex, accountID: account == nil ? fingerprint : id, source: "官方 Codex app-server")
                     snapshot.plan = result.plan; snapshot.tokens = result.lifetimeTokens; snapshot.todayTokens = result.todayTokens
+                    snapshot.availableResetCards = result.availableResetCards; snapshot.resetCardExpiresAt = result.resetCardExpiresAt
                     snapshot.note = result.tokenNote ?? result.quotaNote
                     for bucket in result.buckets {
                         for window in bucket.windows {
                             snapshot.meters.append(UsageMeter(id: bucket.id + "-" + window.id, title: (result.buckets.count > 1 ? (bucket.name ?? bucket.id) + " · " : "") + window.label,
                                 remainingPercent: window.remainingPercent, resetsAt: window.resetsAt))
                         }
-                        if let credits = bucket.creditsBalance.flatMap(Double.init), credits.isFinite { snapshot.balance = credits; snapshot.currency = "额外额度" }
+                        if bucket.id == "codex", let credits = bucket.creditsBalance.flatMap(Double.init), credits.isFinite, credits >= 0 { snapshot.balance = credits; snapshot.currency = "购买额度" }
                     }
                 } else {
                     snapshot = try await client.fetch(value, credential: credentials.map { String(decoding: $0, as: UTF8.self) }, accountID: id)
@@ -139,5 +151,18 @@ final class UsageHub {
         do { try PrivateMetadata.save(history, to: directory.appendingPathComponent("usage-history.json")) }
         catch { configurationError = "用量历史保存失败。" }
     }
-    func shutdown() { for task in tasks.values { task.cancel() } }
+    private func refreshStatus(_ value: UsageProvider, force: Bool) {
+        guard statusTasks[value] == nil else { return }
+        if !force, let status = serviceStatuses[value], Date().timeIntervalSince(status.fetchedAt) < 300 { return }
+        statusTasks[value] = Task {
+            defer { statusTasks[value] = nil }
+            let status = await statusClient.fetch(value)
+            guard !Task.isCancelled, preferences.enabled.contains(value) else { return }
+            serviceStatuses[value] = status
+        }
+    }
+    func shutdown() {
+        for task in tasks.values { task.cancel() }
+        for task in statusTasks.values { task.cancel() }
+    }
 }

@@ -42,16 +42,29 @@ public struct AccountSnapshot: Codable, Sendable, Equatable {
     public var todayTokens: Int64?
     public var tokenNote: String?
     public var quotaNote: String?
+    public var availableResetCards: Int64?
+    public var resetCardExpiresAt: Date?
     public init(fetchedAt: Date = Date(), plan: String? = nil, buckets: [QuotaBucket] = [],
                 lifetimeTokens: Int64? = nil, todayTokens: Int64? = nil, tokenNote: String? = nil, quotaNote: String? = nil) {
         self.fetchedAt = fetchedAt; self.plan = plan; self.buckets = buckets
         self.lifetimeTokens = lifetimeTokens; self.todayTokens = todayTokens
         self.tokenNote = tokenNote; self.quotaNote = quotaNote
+        self.availableResetCards = nil; self.resetCardExpiresAt = nil
     }
     // Strict metadata projection: account email, IDs and authentication tokens are never saved.
     static func parse(account: [String: Any]?, quotas: [String: Any]?, usage: [String: Any]?, now: Date = Date()) -> Self {
         let info = account?["account"] as? [String: Any]
         var result = Self(fetchedAt: now, plan: validModel(info?["planType"]))
+        if let summary = quotas?["rateLimitResetCredits"] as? [String: Any] {
+            result.availableResetCards = validTokenCount(summary["availableCount"])
+            // availableCount is authoritative; detail rows may be capped or absent.
+            if let count = result.availableResetCards, count > 0,
+               let cards = summary["credits"] as? [[String: Any]] {
+                result.resetCardExpiresAt = cards.filter {
+                    $0["status"] as? String == "available" && $0["resetType"] as? String == "codexRateLimits"
+                }.compactMap { LensDate.parse($0["expiresAt"]) }.filter { $0 > now }.min()
+            }
+        }
         let multi = quotas?["rateLimitsByLimitId"] as? [String: Any]
         var entries: [(String, [String: Any])] = []
         if let multi, !multi.isEmpty { entries = multi.keys.sorted().compactMap { key in (multi[key] as? [String: Any]).map { (key, $0) } } }

@@ -29,7 +29,9 @@ extension LensStore {
             snapshot.meters = [UsageMeter(id: "primary", title: "5 小时额度", remainingPercent: 64, resetsAt: now.addingTimeInterval(7200)),
                 UsageMeter(id: "weekly", title: "周额度", remainingPercent: 82, resetsAt: now.addingTimeInterval(172800))]
             snapshot.note = "演示数据 · 非真实账户"
+            if value == .codex { snapshot.availableResetCards = 1; snapshot.balance = 0; snapshot.currency = "购买额度" }
             usage.snapshots["local-" + value.rawValue] = snapshot
+            usage.serviceStatuses[value] = ServiceStatus(condition: .unknown, detail: "演示 · 点击查看官方状态")
         }
         if CommandLine.arguments.contains("--preview-countdown") { pomodoro.state.start(); pomodoro.startForPreview() }
     }
